@@ -1,0 +1,14 @@
+name: "Remove lgtm on update"
+on: pull_request
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jpmcb/prow-github-actions@main
+        with:
+          jobs: "lgtm"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"

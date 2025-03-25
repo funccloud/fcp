@@ -1,0 +1,30 @@
+area:
+  - 'infra'
+  - 'test'
+  - 'tenancy'
+  - 'security'
+  - 'performance'
+  - 'observability'
+  - 'compliance'
+  - 'automation'
+  - 'docs'
+  - 'community'
+  - 'dependencies'
+  - 'app-dev'
+
+kind:
+  - 'bug'
+  - 'feature'
+  - 'enhancement'
+  - 'question'
+  - 'refactor'
+  - 'test'
+  - 'chore'
+  - 'cleanup'
+  - 'fcpep'
+
+priority:
+  - 'low'
+  - 'high'
+  - 'critical'
+  - 'medium'

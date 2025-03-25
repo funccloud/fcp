@@ -1,0 +1,9 @@
+# List of usernames who may use /lgtm
+reviewers:
+- felipeweb
+- devxbr
+
+# List of usernames who may use /approve
+approvers:
+- felipeweb
+- devxbr
