@@ -6,6 +6,8 @@ domain: fcp.funccloud.com
 layout:
 - go.kubebuilder.io/v4
 multigroup: true
+plugins:
+  helm.kubebuilder.io/v1-alpha: {}
 projectName: fcp
 repo: go.funccloud.dev/fcp
 resources:
