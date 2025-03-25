@@ -8,4 +8,14 @@ layout:
 multigroup: true
 projectName: fcp
 repo: go.funccloud.dev/fcp
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: fcp.funccloud.com
+  group: tenancy
+  kind: Workspace
+  path: go.funccloud.dev/fcp/api/tenancy/v1alpha1
+  version: v1alpha1
 version: "3"
