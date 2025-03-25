@@ -33,8 +33,7 @@ A standardized development process for FCP is proposed in order to
 - provide a common structure and clear checkpoints for proposing
   changes to FCP
 - ensure that the motivation for a change is clear
-- allow for the enumeration stability milestones and stability
-  graduation criteria
+- allow for the enumeration stability milestones and stability graduation criteria
 - persist project information in a Version Control System (VCS) for
   future FCP users and contributors
 - support the creation of _high value user facing_ information such
