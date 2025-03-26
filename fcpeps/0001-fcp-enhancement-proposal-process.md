@@ -3,7 +3,8 @@ title: FCP Enhancement Proposal Process
 authors:
   - "@felipeweb"
 creation-date: 2025-03-24
-status: proposed
+status: implemented
+last-updated: 2025-03-25
 ---
 
 # FCPEP-0001: FCP Enhancement Proposal Process
