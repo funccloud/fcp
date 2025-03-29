@@ -24,6 +24,7 @@ import (
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -64,6 +65,9 @@ func (d *WorkspaceCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		return fmt.Errorf("expected an Workspace object but got %T", obj)
 	}
 	workspacelog.Info("Defaulting for Workspace", "name", workspace.GetName())
+	if len(workspace.Spec.Owners) > 1 {
+		workspace.Spec.Owners = sets.New(workspace.Spec.Owners...).UnsortedList()
+	}
 	return nil
 }
 
