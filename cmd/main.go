@@ -39,6 +39,7 @@ import (
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
+	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -208,6 +209,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Workspace")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhooktenancyv1alpha1.SetupWorkspaceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Workspace")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

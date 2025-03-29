@@ -119,6 +119,7 @@ spec:
     - name: <owner-name> # The name of the owner (User or Group).
       kind: <User | Group> # The kind of the owner (User or Group).
 status:
+  observedGeneration: # Observed Generation of the Workspace.
   conditions: # Represents the observations of a Workspace's current state.
     - type: Ready # Type of condition.
       status: <True | False> # Status of the condition, one of True, False, Unknown.

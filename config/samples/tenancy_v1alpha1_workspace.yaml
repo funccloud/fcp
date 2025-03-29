@@ -4,6 +4,9 @@ metadata:
   labels:
     app.kubernetes.io/name: fcp
     app.kubernetes.io/managed-by: kustomize
-  name: workspace-sample
+  name: felipe
 spec:
-  # TODO(user): Add fields here
+   type: personal # The type of the workspace.
+   owners:
+    - name: felipe # The name of the owner (User or Group).
+      kind: User
