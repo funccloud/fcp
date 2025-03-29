@@ -22,7 +22,6 @@ import (
 )
 
 type WorkspaceType string
-type WorkSpaceOwner string
 
 const (
 	// WorkspaceTypePersonal is a workspace type for personal use.
