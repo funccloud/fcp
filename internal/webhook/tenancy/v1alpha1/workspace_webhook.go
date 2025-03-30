@@ -22,9 +22,10 @@ import (
 	"reflect"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -96,7 +97,9 @@ func (v *WorkspaceCustomValidator) ValidateCreate(ctx context.Context, obj runti
 	workspacelog.Info("Validation for Workspace upon creation", "name", workspace.GetName())
 	errs := validateWorkspace(workspace)
 	if len(errs) > 0 {
-		return nil, errors.NewAggregate(errs)
+		return nil, apierrors.NewInvalid(
+			tenancyv1alpha1.GroupVersion.WithKind("Workspace").GroupKind(),
+			workspace.GetName(), errs)
 	}
 	return nil, nil
 }
@@ -114,14 +117,16 @@ func (v *WorkspaceCustomValidator) ValidateUpdate(ctx context.Context, oldObj, n
 	}
 	errs := validateWorkspace(workspace)
 	if workspaceOld.Spec.Type != workspace.Spec.Type {
-		errs = append(errs, fmt.Errorf("workspaceType is immutable"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("type"), workspace.Spec.Type, "workspaceType is immutable"))
 	}
 	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
 		!reflect.DeepEqual(workspace.Spec.Owners, workspaceOld.Spec.Owners) {
-		errs = append(errs, fmt.Errorf("owners is immutable for personal workspaces"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners is immutable for personal workspaces"))
 	}
 	if len(errs) > 0 {
-		return nil, errors.NewAggregate(errs)
+		return nil, apierrors.NewInvalid(
+			tenancyv1alpha1.GroupVersion.WithKind("Workspace").GroupKind(),
+			workspace.GetName(), errs)
 	}
 	return nil, nil
 }
@@ -136,29 +141,29 @@ func (v *WorkspaceCustomValidator) ValidateDelete(ctx context.Context, obj runti
 	return nil, nil
 }
 
-func validateWorkspace(workspace *tenancyv1alpha1.Workspace) []error {
-	errs := make([]error, 0)
+func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
+	var errs field.ErrorList
 	if workspace.Spec.Type == "" {
-		errs = append(errs, fmt.Errorf("workspaceType is required"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("type"), workspace.Spec.Type, "workspaceType is required"))
 	}
 	if workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypePersonal &&
 		workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypeOrganization {
-		errs = append(errs, fmt.Errorf("workspaceType must be either personal or organization"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("type"), workspace.Spec.Type, "workspaceType must be either personal or organization"))
 	}
 	if len(workspace.Spec.Owners) == 0 {
-		errs = append(errs, fmt.Errorf("owners is required"))
+		errs = append(errs, field.Required(field.NewPath("spec").Child("owners"), "owners is required"))
 	}
 	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
 		len(workspace.Spec.Owners) > 1 {
-		errs = append(errs, fmt.Errorf("owners must be a single owner for personal workspaces"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be a single owner for personal workspaces"))
 	}
 	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
 		workspace.Spec.Owners[0].Kind != "User" {
-		errs = append(errs, fmt.Errorf("owners must be a User for personal workspaces"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be a User for personal workspaces"))
 	}
 	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
 		workspace.Spec.Owners[0].Name != workspace.Name {
-		errs = append(errs, fmt.Errorf("owners must be the same as the workspace name for personal workspaces"))
+		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be the same as the workspace name for personal workspaces"))
 	}
 	return errs
 }
