@@ -101,13 +101,13 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// check if the workspace is marked for deletion
 	if !workspace.DeletionTimestamp.IsZero() {
 		// The object is being deleted
-		return r.reconcileDeletion(ctx, l, &workspace)
+		return ctrl.Result{}, r.reconcileDeletion(ctx, l, &workspace)
 	}
 	// reconcile the workspace
-	return r.reconcile(ctx, l, &workspace)
+	return ctrl.Result{}, r.reconcile(ctx, l, &workspace)
 }
 
-func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) (ctrl.Result, error) {
+func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) error {
 	ns := corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -145,7 +145,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			Reason:  tenancyv1alpha1.NamespaceCreatedReason,
 			Message: err.Error(),
 		})
-		return ctrl.Result{}, err
+		return err
 	}
 	if res != controllerutil.OperationResultNone {
 		l.Info("Created or updated namespace", "namespace", ns.Name, "operation", res)
@@ -208,7 +208,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			Message: err.Error(),
 		})
 		l.Error(err, "unable to create or update role")
-		return ctrl.Result{}, err
+		return err
 	}
 	if res != controllerutil.OperationResultNone {
 		l.Info("Created or updated role", "role", roleOwner.Name, "operation", res)
@@ -263,7 +263,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			Message: err.Error(),
 		})
 		l.Error(err, "unable to create or update role binding")
-		return ctrl.Result{}, err
+		return err
 	}
 	if res != controllerutil.OperationResultNone {
 		l.Info("Created or updated role binding", "roleBinding", roleBinding.Name, "operation", res)
@@ -281,23 +281,23 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 		Message: fmt.Sprintf("Workspace %s is ready", workspace.Name),
 	})
 	// reconcile the workspace
-	return ctrl.Result{}, nil
+	return nil
 }
 
-func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) (ctrl.Result, error) {
+func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) error {
 	rolebindList := rbacv1.RoleBindingList{}
 	err := r.Client.List(ctx, &rolebindList, client.MatchingLabels{
 		tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspace.Name,
 	})
 	if err != nil {
 		l.Error(err, "unable to list role bindings")
-		return ctrl.Result{}, err
+		return err
 	}
 	for _, rolebind := range rolebindList.Items {
 		err = r.Client.Delete(ctx, &rolebind)
 		if err != nil {
 			l.Error(err, "unable to delete role binding", "roleBinding", rolebind.Name)
-			return ctrl.Result{}, err
+			return err
 		}
 		l.Info("Deleted role binding", "roleBinding", rolebind.Name)
 	}
@@ -307,13 +307,13 @@ func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logg
 	})
 	if err != nil {
 		l.Error(err, "unable to list roles")
-		return ctrl.Result{}, err
+		return err
 	}
 	for _, role := range roleList.Items {
 		err = r.Client.Delete(ctx, &role)
 		if err != nil {
 			l.Error(err, "unable to delete role", "role", role.Name)
-			return ctrl.Result{}, err
+			return err
 		}
 		l.Info("Deleted role", "role", role.Name)
 	}
@@ -329,7 +329,7 @@ func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logg
 	err = r.Client.Delete(ctx, &ns)
 	if err != nil {
 		l.Error(err, "unable to delete namespace", "namespace", ns.Name)
-		return ctrl.Result{}, err
+		return err
 	}
 	l.Info("Deleted namespace", "namespace", ns.Name)
 	// Remove the finalizer from the list and update it
@@ -338,12 +338,12 @@ func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logg
 		// Remove the finalizer from the list and update it
 		controllerutil.RemoveFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer)
 		if err := r.Update(ctx, workspace); err != nil {
-			return ctrl.Result{}, err
+			return err
 		}
 		l.Info("Removed finalizer from Workspace")
 		// Stop reconciliation as the item is being deleted
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
