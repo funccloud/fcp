@@ -5,28 +5,8 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - tenancy.fcp.funccloud.com
+  - '*'
   resources:
-  - workspaces
+  - '*'
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - tenancy.fcp.funccloud.com
-  resources:
-  - workspaces/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - tenancy.fcp.funccloud.com
-  resources:
-  - workspaces/status
-  verbs:
-  - get
-  - patch
-  - update
+  - '*'

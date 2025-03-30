@@ -21,6 +21,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// WorkspaceFinalizer is the finalizer for the workspace.
+	WorkspaceFinalizer = "workspace.tenancy.fcp.funccloud.com/finalizer"
+)
+
+const (
+	// WorkspaceLinkedResourceLabel is the label for the linked resource.
+	WorkspaceLinkedResourceLabel = "tenancy.fcp.funccloud.com/workspace"
+)
+
 type WorkspaceType string
 
 const (
@@ -46,8 +56,6 @@ type WorkspaceSpec struct {
 type WorkspaceStatus struct {
 	// Conditions the latest available observations of a resource's current state.
 	Status `json:",inline"`
-	// LinkedResources is the list of resources linked to this workspace.
-	LinkedResources []corev1.ObjectReference `json:"linkedResources,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -26,6 +26,9 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
+	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -36,10 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
-	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
-	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

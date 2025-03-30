@@ -3,8 +3,8 @@ title: Customer Isolation
 authors:
   - "@felipeweb"
 creation-date: 2025-03-25
-last-updated: 2025-03-26
-status: proposed
+last-updated: 2025-03-30
+status: implemented
 ---
 
 # FCPEP-0002: Customer Isolation
@@ -125,10 +125,4 @@ status:
       status: <True | False> # Status of the condition, one of True, False, Unknown.
       reason: <ExampleReason> # The reason for the condition's last transition.
       message: <ExampleMessage> # A human readable message indicating details about the transition.
-  linkedResources: # Represents the resources linked to the workspace.
-    - name: <linked-resource-name> # The name of the linked resource.
-      kind: <LinkedResourceKind> # The kind of the linked resource.
-      namespace: <linked-resource-namespace> # The namespace of the linked resource.
-      apiGroup: <linked-resource-api-group> # The API group of the linked resource.
-      apiVersion: <linked-resource-api-version> # The API version of the linked resource.
 ```
