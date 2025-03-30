@@ -1,4 +1,4 @@
 FROM golang:alpine
 WORKDIR /
-COPY manager /
+COPY ./bin/manager /
 CMD ["/manager"]
