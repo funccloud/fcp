@@ -18,11 +18,14 @@ package tenancy
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -81,6 +84,47 @@ var _ = Describe("Workspace Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+			By("Verifying the finalizer is set")
+			// Fetch the resource again to check the finalizer
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, workspace)).To(Succeed())
+				g.Expect(workspace.Finalizers).To(ContainElement(tenancyv1alpha1.WorkspaceFinalizer))
+			}, time.Minute, 10*time.Second).Should(Succeed())
+
+			By("Verifying resources are created")
+			// Run reconcile again after the finalizer is set
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				ns := &corev1.Namespace{}
+				nsName := types.NamespacedName{
+					Name: workspace.Name,
+				}
+				g.Expect(k8sClient.Get(ctx, nsName, ns)).To(Succeed())
+				role := &rbacv1.Role{}
+				roleName := types.NamespacedName{
+					Name:      workspace.Name,
+					Namespace: ns.Name,
+				}
+				g.Expect(k8sClient.Get(ctx, roleName, role)).To(Succeed())
+				roleBinding := &rbacv1.RoleBinding{}
+				rolebindingName := types.NamespacedName{
+					Name:      fmt.Sprintf("fcp-ownership-%s", workspace.Name),
+					Namespace: workspace.Name,
+				}
+				g.Expect(k8sClient.Get(ctx, rolebindingName, roleBinding)).To(Succeed())
+			}, time.Minute, 10*time.Second).Should(Succeed())
+			By("Verfing istatus is set to ready")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, workspace)).To(Succeed())
+				cond := workspace.Status.GetCondition(tenancyv1alpha1.ReadyConditionType)
+				g.Expect(cond).ToNot(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(cond.Reason).To(Equal(tenancyv1alpha1.RbacCreatedReason))
+				g.Expect(cond.Message).To(Equal(fmt.Sprintf("Workspace %s is ready", workspace.Name)))
+			}, time.Minute, 10*time.Second).Should(Succeed())
 		})
 	})
 })

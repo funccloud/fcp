@@ -108,6 +108,18 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) error {
+	ref := metav1.OwnerReference{
+		APIVersion: workspace.APIVersion,
+		Kind:       workspace.Kind,
+		Name:       workspace.Name,
+		UID:        workspace.UID,
+	}
+	if ref.APIVersion == "" {
+		ref.APIVersion = tenancyv1alpha1.GroupVersion.String()
+	}
+	if ref.Kind == "" {
+		ref.Kind = "Workspace"
+	}
 	ns := corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -122,12 +134,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			ns.Labels = make(map[string]string)
 		}
 		ns.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		ns.OwnerReferences = append(ns.OwnerReferences, metav1.OwnerReference{
-			APIVersion: workspace.APIVersion,
-			Kind:       workspace.Kind,
-			Name:       workspace.Name,
-			UID:        workspace.UID,
-		})
+		ns.OwnerReferences = append(ns.OwnerReferences, ref)
 		ns.OwnerReferences = sets.New(ns.OwnerReferences...).UnsortedList()
 		return nil
 	})
@@ -185,12 +192,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			roleOwner.Labels = make(map[string]string)
 		}
 		roleOwner.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		roleOwner.OwnerReferences = append(roleOwner.OwnerReferences, metav1.OwnerReference{
-			APIVersion: workspace.APIVersion,
-			Kind:       workspace.Kind,
-			Name:       workspace.Name,
-			UID:        workspace.UID,
-		})
+		roleOwner.OwnerReferences = append(roleOwner.OwnerReferences, ref)
 		roleOwner.OwnerReferences = sets.New(roleOwner.OwnerReferences...).UnsortedList()
 		return nil
 	})
@@ -240,12 +242,7 @@ func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, work
 			roleBinding.Labels = make(map[string]string)
 		}
 		roleBinding.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		roleBinding.OwnerReferences = append(roleBinding.OwnerReferences, metav1.OwnerReference{
-			APIVersion: workspace.APIVersion,
-			Kind:       workspace.Kind,
-			Name:       workspace.Name,
-			UID:        workspace.UID,
-		})
+		roleBinding.OwnerReferences = append(roleBinding.OwnerReferences, ref)
 		roleBinding.OwnerReferences = sets.New(roleBinding.OwnerReferences...).UnsortedList()
 		return nil
 	})
