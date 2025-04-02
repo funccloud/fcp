@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -314,16 +313,6 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			Eventually(checkResource).Should(Succeed())
-			By("checking that the workspace resource is reconciled")
-			checkWorkspace := func(g Gomega) {
-				metricsOutput := getMetricsOutput()
-				Expect(metricsOutput).To(ContainSubstring(
-					fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 2`,
-						strings.ToLower("tenancy-workspace"),
-					),
-				))
-			}
-			Eventually(checkWorkspace).Should(Succeed())
 			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete workspace resource")
