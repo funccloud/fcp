@@ -19,7 +19,7 @@ const (
 	NamespaceCreatedReason = "NamespaceCreated"
 	// NamespaceCreatedConditionType is the condition type for namespace created.
 	NamespaceReadyConditionType = "NamespaceReady"
-	// RedadyConditionType is the condition type for ready.
+	// ReadyConditionType is the condition type for ready.
 	ReadyConditionType = "Ready"
 	// RbacReadyConditionType is the condition type for rbac ready.
 	RbacReadyConditionType = "RbacReady"
