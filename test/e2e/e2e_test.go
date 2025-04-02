@@ -302,7 +302,7 @@ var _ = Describe("Manager", Ordered, func() {
 		// the reconciliation by using the metrics, i.e.:
 		It("should create a workspace resource", func() {
 			By("creating a workspace resource")
-			cmd := exec.Command("kubectl", "apply", "-f", "e2e/testdata/workspace.yaml")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/workspace.yaml")
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create workspace resource")
 			By("waiting for the workspace resource to be ready")
