@@ -308,7 +308,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for the workspace resource to be ready")
 			checkResource := func(g Gomega) {
 				// comand tat wait for ready condition in workspace e2e
-				cmd := exec.Command("kubectl", "wait", "--for=condition=ready",
+				cmd := exec.Command("kubectl", "wait", "--for=condition=Ready",
 					"workspace", "e2e", "--timeout=2m")
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
