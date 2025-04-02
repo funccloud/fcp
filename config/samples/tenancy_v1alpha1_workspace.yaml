@@ -4,9 +4,9 @@ metadata:
   labels:
     app.kubernetes.io/name: fcp
     app.kubernetes.io/managed-by: kustomize
-  name: felipe
+  name: e2e
 spec:
    type: personal # The type of the workspace.
    owners:
-    - name: felipe # The name of the owner (User or Group).
+    - name: e2e # The name of the owner (User or Group).
       kind: User
