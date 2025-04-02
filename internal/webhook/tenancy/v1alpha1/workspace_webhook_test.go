@@ -21,8 +21,13 @@ import (
 	. "github.com/onsi/gomega"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
-	// TODO (user): Add any additional imports if needed
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const workspaceKind = "Workspace"
+const workspaceName = "test-workspace"
+const userName = "test-user"
 
 var _ = Describe("Workspace Webhook", func() {
 	var (
@@ -49,39 +54,122 @@ var _ = Describe("Workspace Webhook", func() {
 	})
 
 	Context("When creating Workspace under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+		It("Should apply defaults", func() {
+			obj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Workspace",
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}, {
+						Kind: "User",
+						Name: userName,
+					}},
+				},
+			}
+			err := defaulter.Default(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			By("checking that the owners are unique")
+			Expect(obj.Spec.Owners).To(HaveLen(1))
+		})
 	})
 
 	Context("When creating or updating Workspace under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
+		obj = &tenancyv1alpha1.Workspace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: workspaceName,
+			},
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Workspace",
+				APIVersion: tenancyv1alpha1.GroupVersion.String(),
+			},
+			Spec: tenancyv1alpha1.WorkspaceSpec{
+				Type: tenancyv1alpha1.WorkspaceTypePersonal,
+				Owners: []corev1.ObjectReference{{
+					Kind: "User",
+					Name: userName,
+				}, {
+					Kind: "User",
+					Name: userName,
+				}},
+			},
+		}
+		oldObj = &tenancyv1alpha1.Workspace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: workspaceName,
+			},
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Workspace",
+				APIVersion: tenancyv1alpha1.GroupVersion.String(),
+			},
+			Spec: tenancyv1alpha1.WorkspaceSpec{
+				Type: tenancyv1alpha1.WorkspaceTypePersonal,
+				Owners: []corev1.ObjectReference{{
+					Kind: "User",
+					Name: userName,
+				}, {
+					Kind: "User",
+					Name: userName,
+				}},
+			},
+		}
+		It("Should deny creation if a required field is missing", func() {
+			obj.Kind = workspaceKind
+			obj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			obj.Kind = workspaceKind
+			obj.Name = workspaceName
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+			By("simulating an invalid workspace type")
+			obj.Spec.Type = "invalid_type"
+			obj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			obj.Kind = workspaceKind
+			obj.Name = workspaceName
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
 		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should admit creation if all required fields are present", func() {
+			By("simulating a valid creation scenario")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal
+			obj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			obj.Kind = workspaceKind
+			obj.Name = userName
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "User",
+				Name: userName,
+			}}
+			Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
+		})
+
+		It("Should validate updates correctly", func() {
+			By("simulating a imutable field update")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+			By("simulating a update to a valid field")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal
+			obj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			obj.Kind = workspaceKind
+			obj.Name = "test-user"
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "User",
+				Name: userName,
+			}}
+			oldObj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal
+			oldObj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			oldObj.Kind = workspaceKind
+			oldObj.Name = userName
+			oldObj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "User",
+				Name: userName,
+			}}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
 	})
 
 })
