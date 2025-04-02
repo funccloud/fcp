@@ -302,14 +302,14 @@ var _ = Describe("Manager", Ordered, func() {
 		// the reconciliation by using the metrics, i.e.:
 		It("should create a workspace resource", func() {
 			By("creating a workspace resource")
-			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/workspace.yaml")
+			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create workspace resource")
 			By("waiting for the workspace resource to be ready")
 			checkResource := func(g Gomega) {
 				// comand tat wait for ready condition in workspace e2e
 				cmd := exec.Command("kubectl", "wait", "--for=condition=ready",
-					"workspace", "e2e", "--timeout=5m")
+					"workspace", "e2e", "--timeout=2m")
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
@@ -324,6 +324,9 @@ var _ = Describe("Manager", Ordered, func() {
 				))
 			}
 			Eventually(checkWorkspace).Should(Succeed())
+			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete workspace resource")
 		})
 	})
 })
