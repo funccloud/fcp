@@ -17,30 +17,55 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	// WorkspaceFinalizer is the finalizer for the workspace.
+	WorkspaceFinalizer = "workspace.tenancy.fcp.funccloud.com/finalizer"
+)
+
+const (
+	// WorkspaceLinkedResourceLabel is the label for the linked resource.
+	WorkspaceLinkedResourceLabel = "tenancy.fcp.funccloud.com/workspace"
+)
+
+type WorkspaceType string
+
+const (
+	// WorkspaceTypePersonal is a workspace type for personal use.
+	WorkspaceTypePersonal WorkspaceType = "personal"
+	// WorkspaceTypeOrganization is a workspace type for organization use.
+	WorkspaceTypeOrganization WorkspaceType = "organization"
+)
 
 // WorkspaceSpec defines the desired state of Workspace.
 type WorkspaceSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Workspace. Edit workspace_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Type is the type of the workspace.
+	// +kubebuilder:validation:Enum=personal;organization
+	// kubebuilder:validation:Required
+	Type WorkspaceType `json:"type,omitempty"`
+	// Owner is the owner of the workspace.
+	// +kubebuilder:validation:MinItems=1
+	// kubebuilder:validation:Required
+	Owners []corev1.ObjectReference `json:"owners,omitempty"`
 }
 
 // WorkspaceStatus defines the observed state of Workspace.
 type WorkspaceStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Conditions the latest available observations of a resource's current state.
+	Status `json:",inline"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:resource:scope=Cluster,shortName="ws"
+// +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type",description="The type of the workspace"
+// +kubebuilder:printcolumn:name="Owners",type="string",JSONPath=".spec.owners[*].name",description="The owners of the workspace"
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].message",description="The status of the workspace"
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status",description="The status of the workspace"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of the workspace"
 // Workspace is the Schema for the workspaces API.
 type Workspace struct {
 	metav1.TypeMeta   `json:",inline"`
