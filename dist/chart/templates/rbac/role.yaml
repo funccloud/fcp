@@ -1,4 +1,5 @@
 {{- if .Values.rbac.enable }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -6,7 +7,10 @@ metadata:
     {{- include "chart.labels" . | nindent 4 }}
   name: fcp-manager-role
 rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
 {{- end -}}
