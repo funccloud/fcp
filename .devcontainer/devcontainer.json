@@ -3,7 +3,8 @@
   "image": "docker.io/golang:1.24",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/git:1": {}
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/zsh:1":{}
   },
 
   "runArgs": ["--network=host"],
@@ -11,7 +12,7 @@
   "customizations": {
     "vscode": {
       "settings": {
-        "terminal.integrated.shell.linux": "/bin/bash"
+        "terminal.integrated.shell.linux": "/bin/zsh"
       },
       "extensions": [
         "ms-kubernetes-tools.vscode-kubernetes-tools",
