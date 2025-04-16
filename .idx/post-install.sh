@@ -1,20 +1,38 @@
 #!/bin/bash
 set -x
 
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
-chmod +x ./kind
-mv ./kind /usr/local/bin/kind
+# Check if Docker daemon is running
+if ! docker info &>/dev/null; then
+  echo "Error: Docker daemon is not running. Please start Docker."
+  exit 1
+fi
 
-curl -L -o kubebuilder https://go.kubebuilder.io/dl/latest/linux/amd64
-chmod +x kubebuilder
-mv kubebuilder /usr/local/bin/
 
+
+BIN_DIR="$PWD/bin"
+# Create a bin directory within the project if it doesn't exist
+mkdir -p bin
+
+# Download kind binary
+curl -Lo ./bin/kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+chmod +x ./bin/kind
+
+# Download kubebuilder binary
+curl -L -o bin/kubebuilder https://go.kubebuilder.io/dl/latest/linux/amd64
+chmod +x bin/kubebuilder
+
+# Download kubectl binary
 KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-curl -LO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
-chmod +x kubectl
-mv kubectl /usr/local/bin/kubectl
+curl -Lo ./bin/kubectl "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
+chmod +x ./bin/kubectl
 
-docker network create -d=bridge --subnet=172.19.0.0/24 kind
+
+# Update the PATH for the current session
+export PATH="$BIN_DIR:$PATH"
+
+if ! docker network inspect kind &>/dev/null; then
+  docker network create -d=bridge --subnet=172.19.0.0/24 kind
+fi
 
 kind version
 kubebuilder version

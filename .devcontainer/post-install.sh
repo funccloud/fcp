@@ -16,6 +16,8 @@ mv kubectl /usr/local/bin/kubectl
 
 docker network create -d=bridge --subnet=172.19.0.0/24 kind
 
+curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+
 kind version
 kubebuilder version
 docker --version
