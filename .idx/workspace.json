@@ -1,0 +1,11 @@
+{
+  "name": "Kubebuilder IDX Workspace",
+  "description": "IDX configuration for Kubebuilder",
+  "language": "go",
+  "tasks": [
+    {
+      "name": "Post Install Setup",
+      "command": "bash post-install.sh"
+    }
+  ]
+}
