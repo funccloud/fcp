@@ -24,6 +24,7 @@ import (
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors" // Import apierrors
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -62,9 +63,50 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Defer status update
 	defer func() {
-		if updateErr := r.Status().Update(ctx, workspace); updateErr != nil {
-			l.Error(updateErr, "unable to update Workspace status")
-			err = kerrors.NewAggregate([]error{err, updateErr}) // Combine original error with status update error
+		// Re-fetch the workspace to ensure we have the latest version for status update
+		latestWorkspace := &tenancyv1alpha1.Workspace{}
+		// Use the original workspace name/namespace from the request,
+		// as the 'workspace' variable might be modified or become stale.
+		if getErr := r.Get(ctx, req.NamespacedName, latestWorkspace); getErr != nil {
+			// If the workspace is not found, it might have been deleted concurrently.
+			if client.IgnoreNotFound(getErr) == nil {
+				l.Info("Workspace not found during deferred status update, likely deleted.", "workspace", req.NamespacedName)
+				// Don't treat 'not found' as an error for the deferred update,
+				// as the object might have been deleted as part of the reconciliation or concurrently.
+				// The main reconcile loop error (if any) will be returned.
+				return
+			}
+			// For other errors during re-fetch, log and aggregate the error.
+			l.Error(getErr, "unable to re-fetch Workspace for status update", "workspace", req.NamespacedName)
+			// Aggregate the fetch error with any error from the main reconcile logic.
+			err = kerrors.NewAggregate([]error{err, fmt.Errorf("failed to re-fetch workspace for status update: %w", getErr)})
+			return
+		}
+
+		// Check if the status we computed actually differs from the latest status.
+		// This avoids unnecessary updates.
+		// Note: Comparing complex structs might require a more sophisticated check,
+		// but for typical status updates, this can prevent no-op updates.
+		// Consider using equality.Semantic.DeepEqual if available and necessary.
+		// For simplicity, we'll proceed with the update if fetched successfully.
+		// TODO: Implement a deep comparison if needed to avoid unnecessary updates.
+
+		// Apply the status changes calculated during the reconcile loop
+		// onto the 'latestWorkspace' object before updating.
+		latestWorkspace.Status = workspace.Status // workspace.Status holds the computed status
+
+		if updateErr := r.Status().Update(ctx, latestWorkspace); updateErr != nil {
+			// Ignore conflicts on update, as they should trigger a new reconcile anyway.
+			if apierrors.IsConflict(updateErr) { // Use apierrors.IsConflict
+				l.Info("Conflict during status update, requeueing.", "workspace", req.NamespacedName)
+				// Set result to requeue if not already set by the main reconcile logic
+				if err == nil && result.IsZero() {
+					result = ctrl.Result{Requeue: true}
+				}
+				return // Don't aggregate conflict errors, let requeue handle it.
+			}
+			l.Error(updateErr, "unable to update Workspace status", "workspace", req.NamespacedName)
+			err = kerrors.NewAggregate([]error{err, fmt.Errorf("failed to update workspace status: %w", updateErr)}) // Combine original error with status update error
 		}
 	}()
 
@@ -112,16 +154,6 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 func (r *WorkspaceReconciler) reconcileResources(ctx context.Context, l logr.Logger,
 	workspace *tenancyv1alpha1.Workspace) error {
-	// Remove ownerRef creation as it's implicitly handled by SetControllerReference
-	/*
-		ownerRef := metav1.OwnerReference{
-			APIVersion: workspace.APIVersion,
-			Kind:       workspace.Kind,
-			Name:       workspace.Name,
-			UID:        workspace.UID,
-			Controller: func(b bool) *bool { return &b }(true), // Mark as controller owner
-		}
-	*/
 
 	// Reconcile Namespace
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: workspace.Name}}
@@ -147,7 +179,6 @@ func (r *WorkspaceReconciler) reconcileResources(ctx context.Context, l logr.Log
 
 	// Reconcile Role
 	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: workspace.Name, Namespace: workspace.Name}}
-	// Remove ownerRef from the call to reconcileOwnedResource
 	if err := r.reconcileOwnedResource(ctx, l, workspace, role, func() error {
 		role.Rules = []rbacv1.PolicyRule{
 			{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}},
@@ -195,9 +226,6 @@ func (r *WorkspaceReconciler) reconcileResources(ctx context.Context, l logr.Log
 				APIGroup: apiGroup,
 				Kind:     owner.Kind,
 				Name:     owner.Name,
-				// Namespace is needed for ServiceAccount, but not User/Group
-				// ObjectReference doesn't guarantee Namespace, handle if necessary
-				// For now, assume Name is sufficient or Namespace is implicitly cluster-wide
 			})
 		}
 		roleBinding.Subjects = subjects
@@ -239,8 +267,6 @@ func (r *WorkspaceReconciler) reconcileOwnedResource(
 		}
 		obj.GetLabels()[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = owner.Name
 
-		// Correctly use SetControllerReference or manage OwnerReferences manually if needed.
-		// SetControllerReference is simpler if there's only one controller owner.
 		if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
