@@ -6,7 +6,7 @@ IMG = 'controller:latest'
 #docker_build(IMG, '.')
 
 def yaml():
-    data = local('cd config/manager; kustomize edit set image controller=' + IMG + '; cd ../..; kustomize build config/default')
+    data = local('cd config/manager; bin/kustomize edit set image controller=' + IMG + '; cd ../..; bin/kustomize build config/default')
     decoded = decode_yaml_stream(data)
     if decoded:
         for d in decoded:
@@ -20,10 +20,10 @@ def yaml():
     return encode_yaml_stream(decoded)
 
 def manifests():
-    return 'controller-gen crd:trivialVersions=true rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases;'
+    return 'bin/controller-gen crd:trivialVersions=true rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases;'
 
 def generate():
-    return 'controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./...";'
+    return 'bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./...";'
 
 def vetfmt():
     return 'go vet ./...; go fmt ./...'
@@ -31,13 +31,15 @@ def vetfmt():
 def binary():
     return 'CGO_ENABLED=0 GOOS=linux go build -o ./bin/manager cmd/main.go'
 
+local('make controller-gen kustomize')
+
 local(manifests() + generate())
 
 deploy_cert_manager(version='v1.17.1')
 
-local_resource('crd', manifests() + 'kustomize build config/crd | kubectl apply -f -', deps=['api', 'internal'])
+local_resource('crd', manifests() + 'bin/kustomize build config/crd | kubectl apply -f -', deps=['api', 'internal'])
 
-local_resource('un-crd', 'kustomize build config/crd | kubectl delete -f -', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
+local_resource('un-crd', 'bin/kustomize build config/crd | kubectl delete -f -', auto_init=False, trigger_mode=TRIGGER_MODE_MANUAL)
 
 k8s_yaml(yaml())
 
