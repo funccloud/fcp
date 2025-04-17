@@ -79,6 +79,30 @@ var _ = Describe("Workspace Webhook", func() {
 			By("checking that the owners are unique")
 			Expect(obj.Spec.Owners).To(HaveLen(1))
 		})
+
+		It("Should not change owners if already unique", func() {
+			obj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}}, // Already unique
+				},
+			}
+			err := defaulter.Default(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			By("checking that the owners list remains unchanged")
+			Expect(obj.Spec.Owners).To(HaveLen(1))
+			Expect(obj.Spec.Owners[0].Name).To(Equal(userName))
+		})
 	})
 
 	Context("When creating or updating Workspace under Validating Webhook", func() {
@@ -148,7 +172,127 @@ var _ = Describe("Workspace Webhook", func() {
 		})
 
 		It("Should validate updates correctly", func() {
-			By("simulating a imutable field update")
+			// Setup old object for comparison
+			oldObj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					// Name: workspaceName, // Use userName to match the owner for personal type validity
+					Name: userName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}},
+				},
+			}
+			// Create a copy for the new object to modify
+			obj = oldObj.DeepCopy()
+
+			By("simulating an immutable field update (type)")
+			// Temporarily set a different name for the type change test to avoid conflict with owner name rule
+			obj.Name = workspaceName
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+			obj.Name = userName // Reset name
+
+			By("simulating an immutable field update (owners for personal type)")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal // Reset type
+			obj.Spec.Owners = append(obj.Spec.Owners, corev1.ObjectReference{Kind: "User", Name: "another-user"})
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+
+			By("simulating a valid update (no immutable fields changed for personal)")
+			obj.Spec.Owners = oldObj.Spec.Owners         // Reset owners
+			obj.Labels = map[string]string{"foo": "bar"} // Change a mutable field
+			// Now oldObj and obj represent a valid personal workspace state (name == owner name)
+			// before the mutable label change, so the update should be allowed.
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+
+			By("simulating a valid update for organization type (changing owners)")
+			// Change type in both old and new for this test scenario
+			// Ensure oldObj name doesn't conflict with owner rule if it were personal
+			oldObj.Name = workspaceName
+			oldObj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			obj = oldObj.DeepCopy()
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "Group",
+				Name: "new-test-group",
+			}}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
+
+		It("Should validate creation correctly", func() {
+			By("creating a personal workspace with more than one owner")
+			obj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}, {
+						Kind: "User",
+						Name: "another-user",
+					}}, // More than one owner
+				},
+			}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+
+			By("creating a organization workspace with multiple owners")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "User",
+				Name: userName,
+			}, {
+				Kind: "Group",
+				Name: "test-group",
+			}}
+			Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
+
+			By("creating a personal workspace with one owner")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal
+			obj.APIVersion = tenancyv1alpha1.GroupVersion.String()
+			obj.Kind = workspaceKind
+			obj.Name = userName
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "User",
+				Name: userName,
+			}}
+			Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
+		})
+
+		It("Should validate updates correctly", func() {
+			// Setup old object for comparison
+			oldObj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}},
+				},
+			}
+			// Create a copy for the new object to modify
+			obj = oldObj.DeepCopy()
+
+			By("simulating an immutable field update (type)")
 			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
 			By("simulating a update to a valid field")
@@ -167,6 +311,60 @@ var _ = Describe("Workspace Webhook", func() {
 			oldObj.Spec.Owners = []corev1.ObjectReference{{
 				Kind: "User",
 				Name: userName,
+			}}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
+
+		It("Should validate updates correctly", func() {
+			// Setup old object for comparison
+			oldObj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					// Name: workspaceName, // Use userName to match the owner for personal type validity
+					Name: userName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: userName,
+					}},
+				},
+			}
+			// Create a copy for the new object to modify
+			obj = oldObj.DeepCopy()
+
+			By("simulating an immutable field update (type)")
+			// Temporarily set a different name for the type change test to avoid conflict with owner name rule
+			obj.Name = workspaceName
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+			obj.Name = userName // Reset name
+
+			By("simulating an immutable field update (owners for personal type)")
+			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal // Reset type
+			obj.Spec.Owners = append(obj.Spec.Owners, corev1.ObjectReference{Kind: "User", Name: "another-user"})
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+
+			By("simulating a valid update (no immutable fields changed for personal)")
+			obj.Spec.Owners = oldObj.Spec.Owners         // Reset owners
+			obj.Labels = map[string]string{"foo": "bar"} // Change a mutable field
+			// Now oldObj and obj represent a valid personal workspace state (name == owner name)
+			// before the mutable label change, so the update should be allowed.
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+
+			By("simulating a valid update for organization type (changing owners)")
+			// Change type in both old and new for this test scenario
+			// Ensure oldObj name doesn't conflict with owner rule if it were personal
+			oldObj.Name = workspaceName
+			oldObj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
+			obj = oldObj.DeepCopy()
+			obj.Spec.Owners = []corev1.ObjectReference{{
+				Kind: "Group",
+				Name: "new-test-group",
 			}}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
 		})

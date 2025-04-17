@@ -27,11 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/sets"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder" // Import builder
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate" // Import predicate
 )
 
 // WorkspaceReconciler reconciles a Workspace object
@@ -44,312 +45,277 @@ type WorkspaceReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Workspace object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
-func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
-	l := log.FromContext(ctx)
-	l = l.WithValues("workspace", req.NamespacedName)
+func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+	l := log.FromContext(ctx).WithValues("workspace", req.NamespacedName)
 	l.Info("Reconciling Workspace")
+
 	// Fetch the Workspace instance
-	workspace := tenancyv1alpha1.Workspace{}
-	if err := r.Get(ctx, req.NamespacedName, &workspace); err != nil {
+	workspace := &tenancyv1alpha1.Workspace{}
+	if err := r.Get(ctx, req.NamespacedName, workspace); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	if workspace.Status.ObservedGeneration >= workspace.Generation {
-		l.Info("Workspace status already up to date")
-		return ctrl.Result{}, nil
+
+	// Initialize status if necessary
+	if workspace.Status.Conditions == nil {
+		workspace.Status.Conditions = []metav1.Condition{}
 	}
-	// add finalizer if not present
-	if !controllerutil.ContainsFinalizer(&workspace, tenancyv1alpha1.WorkspaceFinalizer) {
-		controllerutil.AddFinalizer(&workspace, tenancyv1alpha1.WorkspaceFinalizer)
-		if err := r.Update(ctx, &workspace); err != nil {
+
+	// Defer status update
+	defer func() {
+		if updateErr := r.Status().Update(ctx, workspace); updateErr != nil {
+			l.Error(updateErr, "unable to update Workspace status")
+			err = kerrors.NewAggregate([]error{err, updateErr}) // Combine original error with status update error
+		}
+	}()
+
+	// Handle deletion
+	if !workspace.DeletionTimestamp.IsZero() {
+		// Call reconcileDeletion and return its error directly.
+		// The result is implicitly ctrl.Result{} when an error occurs or deletion is finished.
+		return ctrl.Result{}, r.reconcileDeletion(ctx, l, workspace)
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer) {
+		l.Info("Adding finalizer")
+		controllerutil.AddFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer)
+		if err := r.Update(ctx, workspace); err != nil {
+			l.Error(err, "unable to add finalizer")
 			return ctrl.Result{}, err
 		}
-		l.Info("Added finalizer to Workspace")
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil // Requeue to process after finalizer is added
 	}
-	obj := workspace.DeepCopy()
-	defer func() {
-		if !controllerutil.ContainsFinalizer(&workspace, tenancyv1alpha1.WorkspaceFinalizer) {
-			// The object is being deleted
-			return
-		}
-		errs := []error{}
-		if err != nil {
-			errs = append(errs, err)
-		}
-		workspace.Status.ObservedGeneration = workspace.Generation
-		if uerr := r.Status().Update(ctx, &workspace); uerr != nil {
-			l.Error(err, "unable to update Workspace status")
-			errs = append(errs, uerr)
-		}
-		if uerr := r.Patch(ctx, &workspace, client.MergeFrom(obj)); uerr != nil {
-			l.Error(err, "unable to patch Workspace")
-			errs = append(errs, uerr)
-		}
-		if len(errs) > 0 {
-			err = kerrors.NewAggregate(errs)
-		}
-		l.Info("Workspace status updated", "workspace", workspace.Name)
-		l.Info("Workspace patched", "workspace", workspace.Name)
-	}()
-	// check if the workspace is marked for deletion
-	if !workspace.DeletionTimestamp.IsZero() {
-		// The object is being deleted
-		return ctrl.Result{}, r.reconcileDeletion(ctx, l, &workspace)
-	}
-	// reconcile the workspace
-	return ctrl.Result{}, r.reconcile(ctx, l, &workspace)
-}
 
-func (r *WorkspaceReconciler) reconcile(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) error {
-	ref := metav1.OwnerReference{
-		APIVersion: workspace.APIVersion,
-		Kind:       workspace.Kind,
-		Name:       workspace.Name,
-		UID:        workspace.UID,
-	}
-	if ref.APIVersion == "" {
-		ref.APIVersion = tenancyv1alpha1.GroupVersion.String()
-	}
-	if ref.Kind == "" {
-		ref.Kind = "Workspace"
-	}
-	ns := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: workspace.Name,
-		},
-	}
-	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, &ns, func() error {
-		if ns.Labels == nil {
-			ns.Labels = make(map[string]string)
-		}
-		ns.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		ns.OwnerReferences = append(ns.OwnerReferences, ref)
-		ns.OwnerReferences = sets.New(ns.OwnerReferences...).UnsortedList()
-		return nil
-	})
+	// Reconcile the workspace resources
+	err = r.reconcileResources(ctx, l, workspace)
 	if err != nil {
-		l.Error(err, "unable to create or update namespace")
-		workspace.Status.SetCondition(metav1.Condition{
-			Type:    tenancyv1alpha1.NamespaceReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.NamespaceCreatedReason,
-			Message: err.Error(),
-		})
 		workspace.Status.SetCondition(metav1.Condition{
 			Type:    tenancyv1alpha1.ReadyConditionType,
 			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.NamespaceCreatedReason,
+			Reason:  "ReconciliationFailed",
+			Message: fmt.Sprintf("Failed to reconcile resources: %v", err),
+		})
+		return ctrl.Result{}, err // Return error to requeue
+	}
+
+	// Update status to Ready
+	workspace.Status.SetCondition(metav1.Condition{
+		Type:    tenancyv1alpha1.ReadyConditionType,
+		Status:  metav1.ConditionTrue,
+		Reason:  tenancyv1alpha1.ResourcesCreatedReason,
+		Message: fmt.Sprintf("Workspace %s is ready", workspace.Name),
+	})
+	workspace.Status.ObservedGeneration = workspace.Generation
+	l.Info("Workspace reconciled successfully")
+	return ctrl.Result{}, nil
+}
+
+func (r *WorkspaceReconciler) reconcileResources(ctx context.Context, l logr.Logger,
+	workspace *tenancyv1alpha1.Workspace) error {
+	// Remove ownerRef creation as it's implicitly handled by SetControllerReference
+	/*
+		ownerRef := metav1.OwnerReference{
+			APIVersion: workspace.APIVersion,
+			Kind:       workspace.Kind,
+			Name:       workspace.Name,
+			UID:        workspace.UID,
+			Controller: func(b bool) *bool { return &b }(true), // Mark as controller owner
+		}
+	*/
+
+	// Reconcile Namespace
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: workspace.Name}}
+	// Remove ownerRef from the call to reconcileOwnedResource
+	if err := r.reconcileOwnedResource(ctx, l, workspace, ns, func() error {
+		// No specific mutations needed beyond labels/ownerRefs for Namespace
+		return nil
+	}); err != nil {
+		workspace.Status.SetCondition(metav1.Condition{
+			Type:    tenancyv1alpha1.NamespaceReadyConditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  tenancyv1alpha1.NamespaceCreationFailedReason,
 			Message: err.Error(),
 		})
-		return err
-	}
-	if res != controllerutil.OperationResultNone {
-		l.Info("Created or updated namespace", "namespace", ns.Name, "operation", res)
+		return fmt.Errorf("failed to reconcile namespace: %w", err)
 	}
 	workspace.Status.SetCondition(metav1.Condition{
 		Type:    tenancyv1alpha1.NamespaceReadyConditionType,
 		Status:  metav1.ConditionTrue,
 		Reason:  tenancyv1alpha1.NamespaceCreatedReason,
-		Message: fmt.Sprintf("Namespace %s created", ns.Name),
-	})
-	workspace.Status.SetCondition(metav1.Condition{
-		Type:    tenancyv1alpha1.ReadyConditionType,
-		Status:  metav1.ConditionFalse,
-		Reason:  tenancyv1alpha1.NamespaceCreatedReason,
-		Message: fmt.Sprintf("Resources are being created in namespace %s", ns.Name),
+		Message: fmt.Sprintf("Namespace %s created/updated", ns.Name),
 	})
 
-	roleOwner := rbacv1.Role{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: rbacv1.SchemeGroupVersion.String(),
-			Kind:       "Role",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workspace.Name,
-			Namespace: ns.Name,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{"*"},
-				Resources: []string{"*"},
-				Verbs:     []string{"*"},
-			},
-		},
-	}
-	res, err = controllerutil.CreateOrUpdate(ctx, r.Client, &roleOwner, func() error {
-		if roleOwner.Labels == nil {
-			roleOwner.Labels = make(map[string]string)
+	// Reconcile Role
+	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: workspace.Name, Namespace: workspace.Name}}
+	// Remove ownerRef from the call to reconcileOwnedResource
+	if err := r.reconcileOwnedResource(ctx, l, workspace, role, func() error {
+		role.Rules = []rbacv1.PolicyRule{
+			{APIGroups: []string{"*"}, Resources: []string{"*"}, Verbs: []string{"*"}},
 		}
-		roleOwner.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		roleOwner.OwnerReferences = append(roleOwner.OwnerReferences, ref)
-		roleOwner.OwnerReferences = sets.New(roleOwner.OwnerReferences...).UnsortedList()
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		workspace.Status.SetCondition(metav1.Condition{
-			Type:    tenancyv1alpha1.RbacCreatedReason,
+			Type:    tenancyv1alpha1.RbacReadyConditionType,
 			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.RbacCreatedReason,
-			Message: err.Error(),
+			Reason:  tenancyv1alpha1.RbacCreationFailedReason,
+			Message: fmt.Sprintf("Failed to reconcile Role: %v", err),
 		})
-		workspace.Status.SetCondition(metav1.Condition{
-			Type:    tenancyv1alpha1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.RbacCreatedReason,
-			Message: err.Error(),
-		})
-		l.Error(err, "unable to create or update role")
-		return err
+		return fmt.Errorf("failed to reconcile role: %w", err)
 	}
-	if res != controllerutil.OperationResultNone {
-		l.Info("Created or updated role", "role", roleOwner.Name, "operation", res)
-	}
-	roleBinding := rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: rbacv1.SchemeGroupVersion.String(),
-			Kind:       "RoleBinding",
-		},
+
+	// Reconcile RoleBinding
+	roleBindingName := fmt.Sprintf("fcp-ownership-%s", workspace.Name)
+	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("fcp-ownership-%s", workspace.Name),
-			Namespace: ns.Name,
+			Name:      roleBindingName,
+			Namespace: workspace.Name,
 		},
-		RoleRef: rbacv1.RoleRef{
+	}
+	// Remove ownerRef from the call to reconcileOwnedResource
+	if err := r.reconcileOwnedResource(ctx, l, workspace, roleBinding, func() error {
+		roleBinding.RoleRef = rbacv1.RoleRef{
 			APIGroup: rbacv1.SchemeGroupVersion.Group,
 			Kind:     "Role",
-			Name:     roleOwner.Name,
-		},
-	}
-	for _, owner := range workspace.Spec.Owners {
-		roleBinding.Subjects = append(roleBinding.Subjects, rbacv1.Subject{
-			APIGroup: owner.GroupVersionKind().Group,
-			Kind:     owner.Kind,
-			Name:     owner.Name,
-		})
-	}
-	res, err = controllerutil.CreateOrUpdate(ctx, r.Client, &roleBinding, func() error {
-		if roleBinding.Labels == nil {
-			roleBinding.Labels = make(map[string]string)
+			Name:     role.Name,
 		}
-		roleBinding.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = workspace.Name
-		roleBinding.OwnerReferences = append(roleBinding.OwnerReferences, ref)
-		roleBinding.OwnerReferences = sets.New(roleBinding.OwnerReferences...).UnsortedList()
+		subjects := []rbacv1.Subject{}
+		for _, owner := range workspace.Spec.Owners {
+			// Ensure Group is set correctly for core K8s kinds like User/Group/ServiceAccount
+			apiGroup := owner.APIVersion // Use APIVersion from ObjectReference first
+			if apiGroup == "" {          // If APIVersion is empty, infer based on Kind
+				if owner.Kind == "User" || owner.Kind == "Group" {
+					apiGroup = rbacv1.GroupName // Explicitly set for core RBAC kinds
+				} else if owner.Kind == "ServiceAccount" {
+					apiGroup = "" // Core API group
+				}
+				// Add more Kind checks if needed
+			}
+
+			subjects = append(subjects, rbacv1.Subject{
+				APIGroup: apiGroup,
+				Kind:     owner.Kind,
+				Name:     owner.Name,
+				// Namespace is needed for ServiceAccount, but not User/Group
+				// ObjectReference doesn't guarantee Namespace, handle if necessary
+				// For now, assume Name is sufficient or Namespace is implicitly cluster-wide
+			})
+		}
+		roleBinding.Subjects = subjects
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		workspace.Status.SetCondition(metav1.Condition{
-			Type:    tenancyv1alpha1.RbacCreatedReason,
+			Type:    tenancyv1alpha1.RbacReadyConditionType,
 			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.RbacCreatedReason,
-			Message: err.Error(),
+			Reason:  tenancyv1alpha1.RbacCreationFailedReason,
+			Message: fmt.Sprintf("Failed to reconcile RoleBinding: %v", err),
 		})
-		workspace.Status.SetCondition(metav1.Condition{
-			Type:    tenancyv1alpha1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  tenancyv1alpha1.RbacCreatedReason,
-			Message: err.Error(),
-		})
-		l.Error(err, "unable to create or update role binding")
-		return err
+		return fmt.Errorf("failed to reconcile role binding: %w", err)
 	}
-	if res != controllerutil.OperationResultNone {
-		l.Info("Created or updated role binding", "roleBinding", roleBinding.Name, "operation", res)
-	}
+
 	workspace.Status.SetCondition(metav1.Condition{
 		Type:    tenancyv1alpha1.RbacReadyConditionType,
 		Status:  metav1.ConditionTrue,
-		Reason:  tenancyv1alpha1.NamespaceCreatedReason,
-		Message: fmt.Sprintf("Role and RoleBinding created in namespace %s", ns.Name),
-	})
-	workspace.Status.SetCondition(metav1.Condition{
-		Type:    tenancyv1alpha1.ReadyConditionType,
-		Status:  metav1.ConditionTrue,
 		Reason:  tenancyv1alpha1.RbacCreatedReason,
-		Message: fmt.Sprintf("Workspace %s is ready", workspace.Name),
+		Message: fmt.Sprintf("Role and RoleBinding created/updated in namespace %s", ns.Name),
 	})
-	// reconcile the workspace
+
 	return nil
 }
 
-func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logger, workspace *tenancyv1alpha1.Workspace) error {
-	rolebindList := rbacv1.RoleBindingList{}
-	err := r.Client.List(ctx, &rolebindList, client.MatchingLabels{
-		tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspace.Name,
+// reconcileOwnedResource handles the CreateOrUpdate logic for an owned resource.
+// Remove the unused ownerRef parameter.
+func (r *WorkspaceReconciler) reconcileOwnedResource(
+	ctx context.Context,
+	l logr.Logger,
+	owner *tenancyv1alpha1.Workspace,
+	obj client.Object, // The object to reconcile (e.g., Namespace, Role, RoleBinding)
+	// ownerRef metav1.OwnerReference, // Removed unused parameter
+	mutateFn func() error, // Function to apply specific mutations
+) error {
+	opRes, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		// Apply common mutations
+		if obj.GetLabels() == nil {
+			obj.SetLabels(make(map[string]string))
+		}
+		obj.GetLabels()[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = owner.Name
+
+		// Correctly use SetControllerReference or manage OwnerReferences manually if needed.
+		// SetControllerReference is simpler if there's only one controller owner.
+		if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference: %w", err)
+		}
+
+		// Apply resource-specific mutations
+		if mutateFn != nil {
+			if err := mutateFn(); err != nil {
+				return fmt.Errorf("mutation failed: %w", err)
+			}
+		}
+		return nil
 	})
+
 	if err != nil {
-		l.Error(err, "unable to list role bindings")
+		l.Error(err, "unable to create or update resource",
+			"resource", obj.GetObjectKind().GroupVersionKind().Kind,
+			"name", obj.GetName())
 		return err
 	}
-	for _, rolebind := range rolebindList.Items {
-		err = r.Client.Delete(ctx, &rolebind)
-		if err != nil {
-			l.Error(err, "unable to delete role binding", "roleBinding", rolebind.Name)
-			return err
-		}
-		l.Info("Deleted role binding", "roleBinding", rolebind.Name)
-	}
-	roleList := rbacv1.RoleList{}
-	err = r.Client.List(ctx, &roleList, client.MatchingLabels{
-		tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspace.Name,
-	})
-	if err != nil {
-		l.Error(err, "unable to list roles")
-		return err
-	}
-	for _, role := range roleList.Items {
-		err = r.Client.Delete(ctx, &role)
-		if err != nil {
-			l.Error(err, "unable to delete role", "role", role.Name)
-			return err
-		}
-		l.Info("Deleted role", "role", role.Name)
-	}
-	ns := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: corev1.SchemeGroupVersion.String(),
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: workspace.Name,
-		},
-	}
-	err = r.Client.Delete(ctx, &ns)
-	if err != nil {
-		l.Error(err, "unable to delete namespace", "namespace", ns.Name)
-		return err
-	}
-	l.Info("Deleted namespace", "namespace", ns.Name)
-	// Remove the finalizer from the list and update it
-	if controllerutil.ContainsFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer) {
-		// Perform any necessary cleanup here
-		// Remove the finalizer from the list and update it
-		controllerutil.RemoveFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer)
-		if err := r.Update(ctx, workspace); err != nil {
-			return err
-		}
-		l.Info("Removed finalizer from Workspace")
-		// Stop reconciliation as the item is being deleted
+
+	if opRes != controllerutil.OperationResultNone {
+		l.Info("Resource reconciled",
+			"resource", obj.GetObjectKind().GroupVersionKind().Kind,
+			"name", obj.GetName(),
+			"operation", opRes)
 	}
 	return nil
+}
+
+// reconcileDeletion handles the cleanup when a Workspace is marked for deletion.
+// It now only returns an error, as the Result is always empty.
+func (r *WorkspaceReconciler) reconcileDeletion(ctx context.Context, l logr.Logger,
+	workspace *tenancyv1alpha1.Workspace) error {
+	l.Info("Reconciling Workspace deletion")
+
+	// Resources (Namespace, Role, RoleBinding) should be garbage collected automatically
+	// by Kubernetes because we set the OwnerReference with Controller=true.
+	// We just need to remove the finalizer.
+
+	if controllerutil.ContainsFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer) {
+		l.Info("Removing finalizer")
+		controllerutil.RemoveFinalizer(workspace, tenancyv1alpha1.WorkspaceFinalizer)
+		if err := r.Update(ctx, workspace); err != nil {
+			l.Error(err, "unable to remove finalizer")
+			return err // Return only the error
+		}
+		l.Info("Finalizer removed")
+	}
+
+	// Stop reconciliation as the item is being deleted
+	return nil // Return nil error on success
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Define a predicate to filter resources based on the workspace label.
+	workspaceLabelPredicate := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		labels := obj.GetLabels()
+		if labels == nil {
+			return false
+		}
+		_, exists := labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel]
+		return exists
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenancyv1alpha1.Workspace{}).
+		// Use Owns with a predicate to watch resources specifically linked to a Workspace
+		// via the label. This ensures the controller reconciles the Workspace if these
+		// labeled resources change unexpectedly (e.g., manual modification or deletion outside GC).
+		// Note: OwnerReferences with Controller=true already trigger reconciliation on deletion.
+		// Owns() primarily helps if the owned object is modified or deleted in a way that bypasses GC.
+		Owns(&corev1.Namespace{}, builder.WithPredicates(workspaceLabelPredicate)).
+		Owns(&rbacv1.Role{}, builder.WithPredicates(workspaceLabelPredicate)).
+		Owns(&rbacv1.RoleBinding{}, builder.WithPredicates(workspaceLabelPredicate)).
 		Named("tenancy-workspace").
-		Owns(&corev1.Namespace{}).
-		Owns(&rbacv1.Role{}).
-		Owns(&rbacv1.RoleBinding{}).
 		Complete(r)
 }

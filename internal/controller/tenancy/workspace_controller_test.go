@@ -122,7 +122,8 @@ var _ = Describe("Workspace Controller", func() {
 				cond := workspace.Status.GetCondition(tenancyv1alpha1.ReadyConditionType)
 				g.Expect(cond).ToNot(BeNil())
 				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-				g.Expect(cond.Reason).To(Equal(tenancyv1alpha1.RbacCreatedReason))
+				// Updated Reason check based on refactoring
+				g.Expect(cond.Reason).To(Equal(tenancyv1alpha1.ResourcesCreatedReason))
 				g.Expect(cond.Message).To(Equal(fmt.Sprintf("Workspace %s is ready", workspace.Name)))
 			}, time.Minute, 10*time.Second).Should(Succeed())
 		})
