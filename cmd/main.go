@@ -26,9 +26,6 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
-	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
-	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -39,6 +36,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
+	workloadcontroller "go.funccloud.dev/fcp/internal/controller/workload"
+	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
+	webhookworkloadv1alpha1 "go.funccloud.dev/fcp/internal/webhook/workload/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -51,6 +55,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(tenancyv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(workloadv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -213,6 +218,20 @@ func main() {
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = webhooktenancyv1alpha1.SetupWorkspaceWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "Workspace")
+			os.Exit(1)
+		}
+	}
+	if err = (&workloadcontroller.ApplicationReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Application")
+		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookworkloadv1alpha1.SetupApplicationWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Application")
 			os.Exit(1)
 		}
 	}
