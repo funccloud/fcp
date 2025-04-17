@@ -332,8 +332,8 @@ spec:
   type: personal
   owners:
   - kind: User
-    name: test-e2e-user
-`, workspaceName)
+    name: %s
+`, workspaceName, workspaceName) // Use workspaceName for both name and owner name
 
 			// Apply the manifest using kubectl apply -f -
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
