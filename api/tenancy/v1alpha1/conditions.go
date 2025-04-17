@@ -15,14 +15,23 @@
 package v1alpha1
 
 const (
-	// NamespaceCreatedConditionType is the condition type for namespace created.
-	NamespaceCreatedReason = "NamespaceCreated"
-	// NamespaceCreatedConditionType is the condition type for namespace created.
-	NamespaceReadyConditionType = "NamespaceReady"
-	// ReadyConditionType is the condition type for ready.
+	// ReadyConditionType is the condition type for the Ready condition.
 	ReadyConditionType = "Ready"
-	// RbacReadyConditionType is the condition type for rbac ready.
+	// NamespaceReadyConditionType is the condition type for the NamespaceReady condition.
+	NamespaceReadyConditionType = "NamespaceReady"
+	// RbacReadyConditionType is the condition type for the RbacReady condition.
 	RbacReadyConditionType = "RbacReady"
-	// RbacCreatedReason is the reason for rbac created.
+)
+
+const (
+	// NamespaceCreatedReason is the reason for the NamespaceCreated condition.
+	NamespaceCreatedReason = "NamespaceCreated"
+	// NamespaceCreationFailedReason is the reason when namespace creation fails.
+	NamespaceCreationFailedReason = "NamespaceCreationFailed"
+	// RbacCreatedReason is the reason for the RbacCreated condition.
 	RbacCreatedReason = "RbacCreated"
+	// RbacCreationFailedReason is the reason when RBAC resource creation fails.
+	RbacCreationFailedReason = "RbacCreationFailed"
+	// ResourcesCreatedReason is the reason when all resources are successfully created/updated.
+	ResourcesCreatedReason = "ResourcesCreated"
 )

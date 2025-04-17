@@ -143,27 +143,35 @@ func (v *WorkspaceCustomValidator) ValidateDelete(ctx context.Context, obj runti
 
 func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
 	var errs field.ErrorList
+	ownersPath := field.NewPath("spec").Child("owners")
+	typePath := field.NewPath("spec").Child("type")
+
+	// Validate Workspace Type
 	if workspace.Spec.Type == "" {
-		errs = append(errs, field.Invalid(field.NewPath("spec").Child("type"), workspace.Spec.Type, "workspaceType is required"))
-	}
-	if workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypePersonal &&
+		errs = append(errs, field.Required(typePath, "workspaceType is required"))
+	} else if workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypePersonal &&
 		workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypeOrganization {
-		errs = append(errs, field.Invalid(field.NewPath("spec").Child("type"), workspace.Spec.Type, "workspaceType must be either personal or organization"))
+		errs = append(errs, field.NotSupported(typePath, workspace.Spec.Type, []string{string(tenancyv1alpha1.WorkspaceTypePersonal), string(tenancyv1alpha1.WorkspaceTypeOrganization)}))
 	}
+
+	// Validate Owners
 	if len(workspace.Spec.Owners) == 0 {
-		errs = append(errs, field.Required(field.NewPath("spec").Child("owners"), "owners is required"))
+		errs = append(errs, field.Required(ownersPath, "owners is required"))
+	} else if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal {
+		// Specific validation for Personal Workspaces
+		if len(workspace.Spec.Owners) > 1 {
+			errs = append(errs, field.Invalid(ownersPath, workspace.Spec.Owners, "must have a single owner for personal workspaces"))
+		} else { // len(workspace.Spec.Owners) == 1
+			owner := workspace.Spec.Owners[0]
+			if owner.Kind != "User" {
+				errs = append(errs, field.Invalid(ownersPath.Index(0).Child("kind"), owner.Kind, "owner kind must be User for personal workspaces"))
+			}
+			if owner.Name != workspace.Name {
+				errs = append(errs, field.Invalid(ownersPath.Index(0).Child("name"), owner.Name, "owner name must match workspace name for personal workspaces"))
+			}
+		}
 	}
-	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
-		len(workspace.Spec.Owners) > 1 {
-		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be a single owner for personal workspaces"))
-	}
-	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
-		workspace.Spec.Owners[0].Kind != "User" {
-		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be a User for personal workspaces"))
-	}
-	if workspace.Spec.Type == tenancyv1alpha1.WorkspaceTypePersonal &&
-		workspace.Spec.Owners[0].Name != workspace.Name {
-		errs = append(errs, field.Invalid(field.NewPath("spec").Child("owners"), workspace.Spec.Owners, "owners must be the same as the workspace name for personal workspaces"))
-	}
+	// No specific validation for Organization type owners for now, besides being non-empty.
+
 	return errs
 }

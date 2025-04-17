@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -316,6 +317,76 @@ var _ = Describe("Manager", Ordered, func() {
 			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete workspace resource")
+		})
+
+		It("should create dependent resources (Namespace, Role, RoleBinding) for a Workspace", func() {
+			const workspaceName = "e2e-dependent-test"
+			By("creating a workspace resource for dependency check")
+			// Create a minimal Workspace manifest string
+			workspaceManifest := fmt.Sprintf(`
+apiVersion: tenancy.fcp.funccloud.com/v1alpha1
+kind: Workspace
+metadata:
+  name: %s
+spec:
+  type: personal
+  owners:
+  - kind: User
+    name: test-e2e-user
+`, workspaceName)
+
+			// Apply the manifest using kubectl apply -f -
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(workspaceManifest)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create workspace resource for dependency check")
+
+			By("waiting for the workspace resource to be ready")
+			checkWorkspaceReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "wait", "workspace", workspaceName,
+					"--for=condition=Ready=True", "--timeout=2m")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Workspace did not become Ready")
+			}
+			Eventually(checkWorkspaceReady).Should(Succeed())
+
+			By("verifying the Namespace exists")
+			checkNamespace := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "namespace", workspaceName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Namespace was not created")
+			}
+			Eventually(checkNamespace).Should(Succeed())
+
+			By("verifying the Role exists")
+			checkRole := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "role", workspaceName, "-n", workspaceName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Role was not created")
+			}
+			Eventually(checkRole).Should(Succeed())
+
+			By("verifying the RoleBinding exists")
+			checkRoleBinding := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "rolebinding", fmt.Sprintf("fcp-ownership-%s", workspaceName), "-n", workspaceName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "RoleBinding was not created")
+			}
+			Eventually(checkRoleBinding).Should(Succeed())
+
+			By("cleaning up the workspace resource")
+			cmd = exec.Command("kubectl", "delete", "workspace", workspaceName)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete workspace resource")
+
+			By("verifying the Namespace is deleted (due to OwnerReference GC)")
+			checkNamespaceDeleted := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "namespace", workspaceName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred()) // Expect an error (NotFound)
+				g.Expect(err.Error()).To(ContainSubstring("NotFound"))
+			}
+			Eventually(checkNamespaceDeleted).Should(Succeed())
 		})
 	})
 })
