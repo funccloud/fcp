@@ -1,0 +1,18 @@
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  ingress:
+    kourier:
+      enabled: true
+  config:
+    autoscaler:
+      enable-scale-to-zero: "true"
+      scale-to-zero-grace-period: 30s
+    domain:
+      "fcp.funccloud.dev": ""
+    network:
+      ingress-class: "kourier.ingress.networking.knative.dev"
+      autocreate-cluster-domain-claims: "true"

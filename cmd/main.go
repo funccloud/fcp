@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -24,40 +25,27 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
+	workloadcontroller "go.funccloud.dev/fcp/internal/controller/workload"
+	"go.funccloud.dev/fcp/internal/resource"
+	"go.funccloud.dev/fcp/internal/scheme"
+	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
+	webhookworkloadv1alpha1 "go.funccloud.dev/fcp/internal/webhook/workload/v1alpha1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
-	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
-	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
-	workloadcontroller "go.funccloud.dev/fcp/internal/controller/workload"
-	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
-	webhookworkloadv1alpha1 "go.funccloud.dev/fcp/internal/webhook/workload/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
-	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 )
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(tenancyv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(workloadv1alpha1.AddToScheme(scheme))
-	// +kubebuilder:scaffold:scheme
-}
 
 // nolint:gocyclo
 func main() {
@@ -68,7 +56,9 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var domain string
 	var tlsOpts []func(*tls.Config)
+	flag.StringVar(&domain, "domain", "fcp.funccloud.dev", "The domain name used for the FCP Platform.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -93,6 +83,23 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.Info("Checking prerequisites...")
+	k8sConfig := ctrl.GetConfigOrDie()
+	ctx := ctrl.SetupSignalHandler()
+	k8sClient, err := client.New(k8sConfig, client.Options{Scheme: scheme.Get()})
+	if err != nil {
+		setupLog.Error(err, "Error creating Kubernetes client for prerequisite checks")
+		os.Exit(1)
+	}
+
+	go func(ctx context.Context) {
+		if err := resource.CheckOrInstallVersion(ctx, domain, k8sClient, setupLog); err != nil {
+			setupLog.Error(err, "Error checking prerequisites")
+			os.Exit(1)
+		}
+		setupLog.Info("All prerequisites are satisfied")
+	}(ctx)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -183,8 +190,8 @@ func main() {
 		})
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
+	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+		Scheme:                 scheme.Get(),
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -263,7 +270,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
