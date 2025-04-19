@@ -54,7 +54,7 @@ The Application CRD will include fields for:
 * **Scale:** Minimum and maximum number of replicas.
 * **Resources:** CPU and memory limits and requests.
 * **Environment Variables:** Configuration settings for the application.
-* **Traffic Splits:** Distribution of traffic between different revisions.
+* **Traffic Splits:** Distribution of traffic between different revisions based on rollout duration.
 * **Custom Domain:** Optionally specify a custom domain for the application using the `domain` field.
 * **Optional Addons/Features:**  e.g.,  Automatic TLS,  Integration with Service Mesh (if applicable)
 
@@ -82,9 +82,7 @@ spec:
   env:
     - name: MY_VAR
       value: "my-value"
-  traffic:
-    - revisionName: my-app-v1
-      percent: 100
+  rolloutDuration: 300s
   # Example of an optional feature
   enableTLS: true
   # Example of custom domain support
