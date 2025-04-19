@@ -1,0 +1,9 @@
+apiVersion: workload.fcp.funccloud.com/v1alpha1
+kind: Application
+metadata:
+  labels:
+    app.kubernetes.io/name: fcp
+    app.kubernetes.io/managed-by: kustomize
+  name: application-sample
+spec:
+  # TODO(user): Add fields here
