@@ -25,9 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Application Controller", func() {
@@ -38,20 +37,34 @@ var _ = Describe("Application Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		application := &workloadv1alpha1.Application{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Application")
 			err := k8sClient.Get(ctx, typeNamespacedName, application)
+			enabled := false
+			min := int32(0)
+			max := int32(1)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &workloadv1alpha1.Application{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: workloadv1alpha1.ApplicationSpec{
+						Workspace: "default",
+						Image:     "nginx:latest",
+						Scale: workloadv1alpha1.Scale{
+							MinReplicas: &min,
+							MaxReplicas: &max,
+						},
+						EnableTLS: &enabled,
+						RolloutDuration: &metav1.Duration{
+							Duration: 0,
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

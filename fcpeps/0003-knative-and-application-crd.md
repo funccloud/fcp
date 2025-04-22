@@ -79,9 +79,14 @@ spec:
     requests:
       cpu: "50m"
       memory: "64Mi"
+  command: []
+  args: []
   env:
     - name: MY_VAR
       value: "my-value"
+  envFrom:
+    - secretRef:
+        name: test
   rolloutDuration: 300s
   # Example of an optional feature
   enableTLS: true
