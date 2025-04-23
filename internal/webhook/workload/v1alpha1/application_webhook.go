@@ -20,13 +20,13 @@ import (
 	"context"
 	"fmt"
 
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-
-	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 )
 
 // nolint:unused
@@ -40,8 +40,6 @@ func SetupApplicationWebhookWithManager(mgr ctrl.Manager) error {
 		WithDefaulter(&ApplicationCustomDefaulter{}).
 		Complete()
 }
-
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 // +kubebuilder:webhook:path=/mutate-workload-fcp-funccloud-com-v1alpha1-application,mutating=true,failurePolicy=fail,sideEffects=None,groups=workload.fcp.funccloud.com,resources=applications,verbs=create;update,versions=v1alpha1,name=mapplication-v1alpha1.kb.io,admissionReviewVersions=v1
 
@@ -59,20 +57,24 @@ var _ webhook.CustomDefaulter = &ApplicationCustomDefaulter{}
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Application.
 func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	application, ok := obj.(*workloadv1alpha1.Application)
-
 	if !ok {
 		return fmt.Errorf("expected an Application object but got %T", obj)
 	}
 	applicationlog.Info("Defaulting for Application", "name", application.GetName())
 
-	// TODO(user): fill in your defaulting logic.
-
+	application.Namespace = application.Spec.Workspace
+	if application.Spec.RolloutDuration == nil {
+		application.Spec.RolloutDuration = &metav1.Duration{
+			Duration: workloadv1alpha1.DefaultRolloutDuration,
+		}
+	}
+	if application.Spec.EnableTLS == nil {
+		enabled := workloadv1alpha1.DefaultEnableTLS
+		application.Spec.EnableTLS = &enabled
+	}
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-workload-fcp-funccloud-com-v1alpha1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=workload.fcp.funccloud.com,resources=applications,verbs=create;update,versions=v1alpha1,name=vapplication-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ApplicationCustomValidator struct is responsible for validating the Application resource

@@ -17,9 +17,20 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	// ApplicationFinalizer is the finalizer for the Application
+	ApplicationFinalizer = "application.fcp.funccloud.com/finalizer"
+	// DefaultRolloutDuration is the default rollout duration for the Application
+	DefaultRolloutDuration = 5 * time.Minute
+	// DefaultEnableTLS is the default enable TLS for the Application
+	DefaultEnableTLS = true
 )
 
 // ApplicationSpec defines the desired state of Application.
