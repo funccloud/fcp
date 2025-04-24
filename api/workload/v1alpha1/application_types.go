@@ -22,6 +22,7 @@ import (
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/serving/pkg/apis/autoscaling"
 )
 
 const (
@@ -31,7 +32,32 @@ const (
 	DefaultRolloutDuration = 5 * time.Minute
 	// DefaultEnableTLS is the default enable TLS for the Application
 	DefaultEnableTLS = true
+	// DefaultTargetUtilizationPercentage is the default target utilization percentage for the Application
+	DefaultTargetUtilizationPercentage = int32(80)
 )
+
+type Metric string
+
+const (
+	// MetricCPU is the CPU metric
+	MetricCPU Metric = "cpu"
+	// MetricMemory is the Memory metric
+	MetricMemory Metric = "memory"
+	// MetricConcurrency is the Concurrency metric
+	MetricConcurrency Metric = "concurrency"
+	// MetricRPS is the Requests per second metric
+	MetricRPS Metric = "rps"
+)
+
+func (m Metric) GetClass() string {
+	switch m {
+	case MetricCPU, MetricMemory:
+		return autoscaling.HPA
+	case MetricConcurrency, MetricRPS:
+		return autoscaling.KPA
+	}
+	return autoscaling.HPA
+}
 
 // ApplicationSpec defines the desired state of Application.
 type ApplicationSpec struct {
@@ -80,6 +106,12 @@ type Scale struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1
 	MaxReplicas *int32 `json:"maxReplicas,omitempty"`
+	// TargetUtilizationPercentage is the target  utilization percentage for the application
+	TargetUtilizationPercentage *int32 `json:"targetUtilizationPercentage,omitempty"`
+	// Target is the target of the application
+	Target *int32 `json:"target,omitempty"`
+	// Metric is the metric of the application
+	Metric Metric `json:"metric,omitempty"`
 }
 
 // ApplicationStatus defines the observed state of Application.

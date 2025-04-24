@@ -7,12 +7,23 @@ spec:
   ingress:
     kourier:
       enabled: true
+      {{ if .IsKind}}
+      service-type: NodePort
+      http-port: 31080
+      https-port: 31443
+      {{ end }}
   config:
     autoscaler:
       enable-scale-to-zero: "true"
       scale-to-zero-grace-period: 30s
     domain:
-      "fcp.funccloud.dev": ""
+      "{{ .Domain }}": ""
+    certmanager:
+      issuerRef: |
+        name: {{ .IssuerName }}
+        kind: ClusterIssuer
     network:
       ingress-class: "kourier.ingress.networking.knative.dev"
       autocreate-cluster-domain-claims: "true"
+      external-domain-tls: Enabled
+      http-protocol: Redirected

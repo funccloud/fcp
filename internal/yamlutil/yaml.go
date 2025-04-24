@@ -1,0 +1,87 @@
+package yamlutil
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// ApplyManifestFromURL downloads a YAML manifest from a URL and applies its resources.
+func ApplyManifestFromURL(ctx context.Context, k8sClient client.Client, log logr.Logger, url string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		log.Error(err, "Error creating HTTP request", "url", url)
+		return fmt.Errorf("error creating request to download manifest: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Error(err, "Error downloading manifest", "url", url)
+		return fmt.Errorf("error downloading manifest from %s: %w", url, err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Error(cerr, "Error closing response body for manifest download", "url", url)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("status code %d", resp.StatusCode)
+		log.Error(err, "Error downloading manifest", "url", url)
+		return fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
+	}
+
+	manifestBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error(err, "Error reading manifest response body", "url", url)
+		return fmt.Errorf("error reading manifest: %w", err)
+	}
+
+	err = ApplyManifestYAML(ctx, k8sClient, string(manifestBytes), log)
+	if err != nil {
+		log.Error(err, "Error applying manifest", "url", url)
+		return fmt.Errorf("error applying manifest from %s: %w", url, err)
+	}
+
+	log.Info("Manifest application finished.", "url", url)
+	return nil
+}
+
+// ApplyManifestYAML applies a Kubernetes manifest provided as a YAML string.
+// It decodes the YAML and applies each object using Server-Side Apply.
+func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAML string, log logr.Logger) error {
+	decoder := yaml.NewYAMLToJSONDecoder(strings.NewReader(manifestYAML))
+	for {
+		obj := &unstructured.Unstructured{}
+		err := decoder.Decode(obj)
+		if err != nil {
+			if err == io.EOF {
+				break // End of YAML stream
+			}
+			return fmt.Errorf("failed to decode YAML object: %w", err)
+		}
+
+		if obj.Object == nil {
+			continue // Skip empty objects
+		}
+
+		log.Info("Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
+
+		// Use Server-Side Apply (Patch)
+		patch := client.Apply                                                                 // Use Apply patch type
+		opts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("fcp-manager")} // Adjust FieldOwner as needed
+		err = k8sClient.Patch(ctx, obj, patch, opts...)
+		if err != nil {
+			log.Error(err, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
+			return fmt.Errorf("failed to apply object %s/%s: %w", obj.GetKind(), obj.GetName(), err)
+		}
+	}
+	return nil
+}

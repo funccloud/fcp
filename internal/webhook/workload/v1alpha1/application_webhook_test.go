@@ -120,6 +120,75 @@ var _ = Describe("Application Webhook", func() {
 			Expect(obj.Spec.RolloutDuration).To(Equal(&metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration}))
 			Expect(obj.Spec.EnableTLS).To(Equal(func() *bool { b := workloadv1alpha1.DefaultEnableTLS; return &b }()))
 		})
+
+		It("Should set default Scale values when Scale is empty", func() {
+			By("creating an application with an empty Scale struct")
+			obj = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-defaults", Namespace: "test-ns-ginkgo-scale-defaults"},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Workspace: "test-workspace-ginkgo-scale-defaults",
+					Scale:     workloadv1alpha1.Scale{}, // Empty Scale
+				},
+			}
+
+			By("calling the Default method")
+			err := defaulter.Default(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking that the default Scale values are set")
+			Expect(obj.Spec.Scale.Metric).To(Equal(workloadv1alpha1.MetricConcurrency))
+			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(Equal(func() *int32 { i := workloadv1alpha1.DefaultTargetUtilizationPercentage; return &i }()))
+			Expect(obj.Spec.Scale.Target).To(BeNil()) // Target should not be defaulted if TargetUtilizationPercentage is
+		})
+
+		It("Should not override existing Scale values", func() {
+			By("creating an application with existing Scale values")
+			metric := workloadv1alpha1.MetricCPU
+			targetUtilization := int32(50)
+			obj = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-exist", Namespace: "test-ns-ginkgo-scale-exist"},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Workspace: "test-workspace-ginkgo-scale-exist",
+					Scale: workloadv1alpha1.Scale{
+						Metric:                      metric,
+						TargetUtilizationPercentage: &targetUtilization,
+					},
+				},
+			}
+
+			By("calling the Default method")
+			err := defaulter.Default(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking that the existing Scale values are not overridden")
+			Expect(obj.Spec.Scale.Metric).To(Equal(metric))
+			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(Equal(&targetUtilization))
+			Expect(obj.Spec.Scale.Target).To(BeNil())
+		})
+
+		It("Should not set default TargetUtilizationPercentage if Target is set", func() {
+			By("creating an application with Target set in Scale")
+			target := int32(100)
+			obj = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-target", Namespace: "test-ns-ginkgo-scale-target"},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Workspace: "test-workspace-ginkgo-scale-target",
+					Scale: workloadv1alpha1.Scale{
+						Target: &target, // Target is set
+						// Metric is empty, should be defaulted
+					},
+				},
+			}
+
+			By("calling the Default method")
+			err := defaulter.Default(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking that TargetUtilizationPercentage is not defaulted when Target is set")
+			Expect(obj.Spec.Scale.Metric).To(Equal(workloadv1alpha1.MetricConcurrency)) // Metric should still default
+			Expect(obj.Spec.Scale.Target).To(Equal(&target))
+			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(BeNil()) // TargetUtilizationPercentage should NOT be defaulted
+		})
 	})
 
 	Context("When creating or updating Application under Validating Webhook", func() {

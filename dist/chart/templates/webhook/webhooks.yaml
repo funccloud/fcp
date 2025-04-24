@@ -99,6 +99,7 @@ webhooks:
       - operations:
           - CREATE
           - UPDATE
+          - DELETE
         apiGroups:
           - workload.fcp.funccloud.com
         apiVersions:

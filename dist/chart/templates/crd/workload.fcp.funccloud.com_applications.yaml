@@ -643,11 +643,23 @@ spec:
                     format: int32
                     minimum: 1
                     type: integer
+                  metric:
+                    description: Metric is the metric of the application
+                    type: string
                   minReplicas:
                     description: MinReplicas is the minimum number of replicas for
                       the application
                     format: int32
                     minimum: 0
+                    type: integer
+                  target:
+                    description: Target is the target of the application
+                    format: int32
+                    type: integer
+                  targetUtilizationPercentage:
+                    description: TargetUtilizationPercentage is the target  utilization
+                      percentage for the application
+                    format: int32
                     type: integer
                 required:
                 - maxReplicas

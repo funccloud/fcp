@@ -5,12 +5,11 @@ import (
 	"context"
 	_ "embed" // Import the embed package
 	"fmt"
-	"io"
-	"net/http"
+	"text/template"
 	"time"
 
-	"github.com/go-logr/logr"
-	"go.funccloud.dev/fcp/internal/resource/kind" // Import the kind package
+	"github.com/go-logr/logr" // Import the kind package
+	"go.funccloud.dev/fcp/internal/yamlutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -50,13 +49,13 @@ const (
 )
 
 // InstallKnative installs Knative Serving using the Knative Operator.
-func InstallKnative(ctx context.Context, domain string, k8sClient client.Client, log logr.Logger) error {
+func InstallKnative(ctx context.Context, domain, issuerName string, isKind bool, k8sClient client.Client, log logr.Logger) error {
 	applyCtx, cancel := context.WithTimeout(ctx, applyTimeout)
 	defer cancel()
 
 	// 1. Apply Knative Operator manifest
 	log.Info("Applying Knative Operator manifest...", "url", knativeOperatorURL)
-	if err := applyManifestFromURL(applyCtx, k8sClient, log, knativeOperatorURL); err != nil {
+	if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, log, knativeOperatorURL); err != nil {
 		return fmt.Errorf("failed to apply Knative Operator manifest from %s: %w", knativeOperatorURL, err)
 	}
 
@@ -88,10 +87,24 @@ func InstallKnative(ctx context.Context, domain string, k8sClient client.Client,
 
 	// 4. Apply KnativeServing CR from embedded YAML
 	log.Info("Applying KnativeServing custom resource from embedded YAML...", "namespace", knativeServingNamespace, "name", knativeServingCRName)
-
+	tpl, err := template.New("knativeServingTemplate").Parse(string(knativeServingYAML))
+	if err != nil {
+		log.Error(err, "Failed to parse embedded KnativeServing YAML template")
+		return fmt.Errorf("failed to parse embedded KnativeServing YAML template: %w", err)
+	}
+	buff := bytes.Buffer{}
+	err = tpl.Execute(&buff, map[string]any{
+		"Domain":     domain,
+		"IssuerName": issuerName,
+		"IsKind":     isKind,
+	})
+	if err != nil {
+		log.Error(err, "Failed to execute embedded KnativeServing YAML template")
+		return fmt.Errorf("failed to execute embedded KnativeServing YAML template: %w", err)
+	}
 	// Decode the embedded YAML into an unstructured object
 	knativeServingCR := &unstructured.Unstructured{}
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(knativeServingYAML), 4096)
+	decoder := yaml.NewYAMLOrJSONDecoder(&buff, 4096)
 	if err := decoder.Decode(knativeServingCR); err != nil {
 		log.Error(err, "Failed to decode embedded KnativeServing YAML")
 		return fmt.Errorf("failed to decode embedded KnativeServing YAML: %w", err)
@@ -101,36 +114,6 @@ func InstallKnative(ctx context.Context, domain string, k8sClient client.Client,
 	if knativeServingCR.GetNamespace() != knativeServingNamespace {
 		log.Info("Setting namespace on embedded KnativeServing CR", "namespace", knativeServingNamespace)
 		knativeServingCR.SetNamespace(knativeServingNamespace)
-	}
-	log.Info("Setting domain in KnativeServing CR", "domain", domain)
-	domainConfig := map[string]interface{}{
-		domain: "", // The value is empty as per Knative config
-	}
-	if err := unstructured.SetNestedField(knativeServingCR.Object, domainConfig, "spec", "config", "domain"); err != nil {
-		log.Error(err, "Failed to set default domain in KnativeServing CR for Kind")
-		return fmt.Errorf("failed to set default domain for Kind: %w", err)
-	}
-
-	// Conditionally set service type to NodePort if running in Kind
-	isKind, err := kind.IsKindCluster(ctx, k8sClient)
-	if err != nil {
-		log.Error(err, "Failed to check if running in Kind cluster")
-		// Decide how to handle this error - perhaps default to non-Kind behavior or return error
-		// For now, let's log and continue assuming not Kind
-	} else if isKind {
-		log.Info("Running in Kind cluster, setting Kourier service type to NodePort")
-		if err := unstructured.SetNestedField(knativeServingCR.Object, "NodePort", "spec", "ingress", "kourier", "service-type"); err != nil {
-			log.Error(err, "Failed to set Kourier service type to NodePort in KnativeServing CR")
-			return fmt.Errorf("failed to set Kourier service type to NodePort: %w", err)
-		}
-		if err := unstructured.SetNestedField(knativeServingCR.Object, float64(31080), "spec", "ingress", "kourier", "http-port"); err != nil {
-			log.Error(err, "Failed to set Kourier service http-port in KnativeServing CR")
-			return fmt.Errorf("failed to set Kourier service http-port: %w", err)
-		}
-		if err := unstructured.SetNestedField(knativeServingCR.Object, float64(31443), "spec", "ingress", "kourier", "https-port"); err != nil {
-			log.Error(err, "Failed to set Kourier service https-port in KnativeServing CR")
-			return fmt.Errorf("failed to set Kourier service https-port: %w", err)
-		}
 	}
 
 	// Use Server-Side Apply (SSA)
@@ -152,55 +135,6 @@ func InstallKnative(ctx context.Context, domain string, k8sClient client.Client,
 	// Note: patchKnativeNetworkConfig is no longer needed as Kourier is configured via KnativeServing CR
 
 	log.Info("Knative Operator installation and Serving readiness checks completed.")
-	return nil
-}
-
-// applyManifestFromURL fetches a YAML manifest from a URL and applies its resources using the client.
-func applyManifestFromURL(ctx context.Context, k8sClient client.Client, log logr.Logger, url string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("failed to fetch manifest from %s: %w", url, err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-
-			log.Error(closeErr, "Failed to close response body for URL", "url", url)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch manifest from %s: status code %d", url, resp.StatusCode)
-	}
-
-	decoder := yaml.NewYAMLOrJSONDecoder(resp.Body, 4096)
-	for {
-		obj := &unstructured.Unstructured{}
-		err := decoder.Decode(obj)
-		if err == io.EOF {
-			break // End of stream
-		}
-		if err != nil {
-			return fmt.Errorf("failed to decode manifest object from %s: %w", url, err)
-		}
-
-		if obj.Object == nil {
-			continue // Skip empty objects
-		}
-
-		// Use Server-Side Apply (SSA) for better conflict resolution and ownership
-		patch := client.Apply
-		force := true                                                                       // Define a boolean variable
-		patchOptions := &client.PatchOptions{FieldManager: "fcp-controller", Force: &force} // Pass the address of the boolean variable
-
-		log.Info("Applying resource", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-		err = k8sClient.Patch(ctx, obj, patch, patchOptions)
-		if err != nil {
-			// Log error but continue trying to apply other resources in the manifest
-			log.Error(err, "Failed to apply resource", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-			// Return error immediately for operator install, as subsequent steps depend on it
-			return fmt.Errorf("failed to apply resource %s/%s (%s): %w", obj.GetNamespace(), obj.GetName(), obj.GetKind(), err)
-		}
-	}
 	return nil
 }
 

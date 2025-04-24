@@ -2,23 +2,31 @@ package knative
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 
 	"github.com/go-logr/logr"
 	"go.funccloud.dev/fcp/internal/scheme"
+	"go.funccloud.dev/fcp/internal/yamlutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta" // Added import
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/types" // Added import
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+//go:embed le-prod-issuer.yaml
+var leProdIssuerYAML string
+
+//go:embed le-staging-issuer.yaml
+var leStagingIssuerYAML string
+
 // CheckOrInstallVersion checks if Knative Serving (managed by Operator) is installed and ready.
-// If not installed or not ready, it attempts to install using the Knative Operator.
+// If not installed or not ready, it attempts to install using the Knative Operator after applying the appropriate Let's Encrypt issuer.
 // Returns an error if the check fails or if installation is required and fails.
-func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.Client, log logr.Logger) error {
+func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.Client, log logr.Logger, isKind bool) error { // Added isKind parameter
 	log = log.WithName("KnativeCheckInstall")
 
 	// Check for the KnativeServing CR status first, as this indicates Operator success
@@ -79,8 +87,28 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 	}
 
 	if needsInstall {
+		// Apply the appropriate Let's Encrypt issuer before installing Knative
+		var issuerYAML string
+		var issuerName string
+		if isKind {
+			log.Info("Applying Let's Encrypt staging issuer for Kind cluster...")
+			issuerYAML = leStagingIssuerYAML
+			issuerName = "le-staging-issuer" // Assuming name from YAML
+		} else {
+			log.Info("Applying Let's Encrypt production issuer...")
+			issuerYAML = leProdIssuerYAML
+			issuerName = "le-prod-issuer" // Assuming name from YAML
+		}
+
+		applyErr := yamlutil.ApplyManifestYAML(ctx, k8sClient, issuerYAML, log)
+		if applyErr != nil {
+			log.Error(applyErr, "Failed to apply Let's Encrypt issuer", "issuer", issuerName)
+			return fmt.Errorf("failed to apply Let's Encrypt issuer %s: %w", issuerName, applyErr)
+		}
+		log.Info("Successfully applied Let's Encrypt issuer", "issuer", issuerName)
+
 		log.Info("Attempting Knative Serving installation/reconciliation...")
-		installErr := InstallKnative(ctx, domain, k8sClient, log)
+		installErr := InstallKnative(ctx, domain, issuerName, isKind, k8sClient, log)
 		if installErr != nil {
 			log.Error(installErr, "Failed to install/reconcile Knative Serving using Operator")
 			return fmt.Errorf("failed to install/reconcile Knative Serving using Operator: %w", installErr)

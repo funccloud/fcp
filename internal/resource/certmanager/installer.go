@@ -1,21 +1,17 @@
 package certmanager
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.funccloud.dev/fcp/internal/yamlutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -34,7 +30,7 @@ func InstallCertManager(ctx context.Context, k8sClient client.Client, log logr.L
 	// 1. Install CRDs
 	crdsURL := fmt.Sprintf(CertManagerCRDsURLTemplate, CertManagerVersion)
 	log.Info("Downloading cert-manager CRDs manifest", "url", crdsURL)
-	if err := applyManifestFromURL(ctx, k8sClient, log, crdsURL); err != nil {
+	if err := yamlutil.ApplyManifestFromURL(ctx, k8sClient, log, crdsURL); err != nil {
 		log.Error(err, "Failed to apply cert-manager CRDs manifest")
 		return fmt.Errorf("failed to apply cert-manager CRDs from %s: %w", crdsURL, err)
 	}
@@ -47,7 +43,7 @@ func InstallCertManager(ctx context.Context, k8sClient client.Client, log logr.L
 	// 2. Install main cert-manager components
 	manifestURL := fmt.Sprintf(CertManagerManifestURLTemplate, CertManagerVersion)
 	log.Info("Downloading main cert-manager manifest", "url", manifestURL)
-	if err := applyManifestFromURL(ctx, k8sClient, log, manifestURL); err != nil {
+	if err := yamlutil.ApplyManifestFromURL(ctx, k8sClient, log, manifestURL); err != nil {
 		log.Error(err, "Failed to apply main cert-manager manifest")
 		return fmt.Errorf("failed to apply main cert-manager manifest from %s: %w", manifestURL, err)
 	}
@@ -64,104 +60,6 @@ func InstallCertManager(ctx context.Context, k8sClient client.Client, log logr.L
 	}
 
 	log.Info("Cert-manager installation completed successfully.")
-	return nil
-}
-
-// applyManifestFromURL downloads a YAML manifest from a URL and applies its resources.
-func applyManifestFromURL(ctx context.Context, k8sClient client.Client, log logr.Logger, url string) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		log.Error(err, "Error creating HTTP request", "url", url)
-		return fmt.Errorf("error creating request to download manifest: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Error(err, "Error downloading manifest", "url", url)
-		return fmt.Errorf("error downloading manifest from %s: %w", url, err)
-	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			log.Error(cerr, "Error closing response body for manifest download", "url", url)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("status code %d", resp.StatusCode)
-		log.Error(err, "Error downloading manifest", "url", url)
-		return fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
-	}
-
-	manifestBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Error(err, "Error reading manifest response body", "url", url)
-		return fmt.Errorf("error reading manifest: %w", err)
-	}
-
-	log.Info("Applying resources from manifest...", "url", url)
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(manifestBytes), 1024)
-	var appliedCount int
-	for {
-		obj := &unstructured.Unstructured{}
-		err := decoder.Decode(obj)
-		if err == io.EOF {
-			break // End of YAML file
-		}
-		if err != nil {
-			log.Error(err, "Error decoding object from YAML manifest", "url", url)
-			return fmt.Errorf("error decoding manifest: %w", err)
-		}
-
-		// Check if the decoded object's content is nil
-		if obj.Object == nil {
-			continue // Empty object, skip
-		}
-
-		log.Info("Applying resource...",
-			"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-		// Using Server Side Apply would be more robust, but Create/Update is simpler here.
-		err = k8sClient.Create(ctx, obj)
-		if err != nil {
-			if apierrors.IsAlreadyExists(err) {
-				log.Info("Resource already exists, attempting update...",
-					"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-				// Try to get the existing resource to fetch the resourceVersion
-				existingObj := &unstructured.Unstructured{}
-				existingObj.SetGroupVersionKind(obj.GroupVersionKind())
-				getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), existingObj)
-				if getErr == nil {
-					obj.SetResourceVersion(existingObj.GetResourceVersion())
-					updateErr := k8sClient.Update(ctx, obj)
-					if updateErr != nil {
-						log.Error(updateErr, "Failed to update existing resource",
-							"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-						// Do not return error here, could be an immutable resource or conflict
-					} else {
-						log.Info("Existing resource updated.",
-							"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-						appliedCount++
-					}
-				} else {
-					log.Error(getErr, "Failed to get existing resource for update",
-						"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-				}
-			} else {
-				log.Error(err, "Error creating resource",
-					"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-				return fmt.Errorf("error creating resource %s/%s (%s): %w",
-					obj.GetNamespace(), obj.GetName(), obj.GetKind(), err)
-			}
-		} else {
-			appliedCount++
-			log.Info("Resource created successfully.",
-				"kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
-		}
-
-		// Short pause to avoid overwhelming the API server
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	log.Info("Manifest application finished.", "url", url, "resourcesCreatedOrUpdated", appliedCount)
 	return nil
 }
 

@@ -72,10 +72,18 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		enabled := workloadv1alpha1.DefaultEnableTLS
 		application.Spec.EnableTLS = &enabled
 	}
+	if application.Spec.Scale.Metric == "" {
+		application.Spec.Scale.Metric = workloadv1alpha1.MetricConcurrency
+
+	}
+	if application.Spec.Scale.Target == nil && application.Spec.Scale.TargetUtilizationPercentage == nil {
+		targetUtilizationPercentage := workloadv1alpha1.DefaultTargetUtilizationPercentage
+		application.Spec.Scale.TargetUtilizationPercentage = &targetUtilizationPercentage
+	}
 	return nil
 }
 
-// +kubebuilder:webhook:path=/validate-workload-fcp-funccloud-com-v1alpha1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=workload.fcp.funccloud.com,resources=applications,verbs=create;update,versions=v1alpha1,name=vapplication-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-workload-fcp-funccloud-com-v1alpha1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=workload.fcp.funccloud.com,resources=applications,verbs=create;update;delete,versions=v1alpha1,name=vapplication-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ApplicationCustomValidator struct is responsible for validating the Application resource
 // when it is created, updated, or deleted.
