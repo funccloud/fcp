@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1" // Add workload scheme import
 	// +kubebuilder:scaffold:imports
 )
 
@@ -60,6 +61,8 @@ var _ = BeforeSuite(func() {
 
 	var err error
 	err = tenancyv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = workloadv1alpha1.AddToScheme(scheme.Scheme) // Add workload scheme
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

@@ -28,7 +28,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,8 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

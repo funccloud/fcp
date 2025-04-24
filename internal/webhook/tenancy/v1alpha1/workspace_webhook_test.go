@@ -19,8 +19,11 @@ package v1alpha1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/utils/ptr" // Import ptr package
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1" // Import workload API
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -38,6 +41,7 @@ var _ = Describe("Workspace Webhook", func() {
 	)
 
 	BeforeEach(func() {
+		validator.Client = k8sClient
 		obj = &tenancyv1alpha1.Workspace{}
 		oldObj = &tenancyv1alpha1.Workspace{}
 		validator = WorkspaceCustomValidator{}
@@ -370,4 +374,95 @@ var _ = Describe("Workspace Webhook", func() {
 		})
 	})
 
-})
+	Context("When deleting Workspace under Validating Webhook", func() {
+		var testNamespace *corev1.Namespace
+		BeforeEach(func() {
+			// Create the test namespace with a generated name to avoid conflicts
+			testNamespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: workspaceName + "-"},
+			}
+			Expect(k8sClient.Create(ctx, testNamespace)).Should(Succeed())
+			// Refresh testNamespace to get the actual generated name
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(testNamespace), testNamespace)).Should(Succeed())
+
+			// Initialize the validator with the test environment client
+			validator = WorkspaceCustomValidator{Client: k8sClient}
+			Expect(validator.Client).NotTo(BeNil(), "Validator client should be initialized")
+
+			// Basic workspace object for deletion tests - use the constant name for the workspace itself
+			obj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypeOrganization, // Type doesn't matter much for delete validation
+					Owners: []corev1.ObjectReference{{
+						Kind: "Group",
+						Name: "test-group",
+					}},
+				},
+			}
+		})
+
+		AfterEach(func() {
+			// Clean up any created applications within the test namespace
+			appList := &workloadv1alpha1.ApplicationList{}
+			err := k8sClient.List(ctx, appList, client.InNamespace(testNamespace.Name))
+			if err == nil {
+				for _, app := range appList.Items {
+					Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &app))).Should(Succeed())
+				}
+			}
+
+			// Delete the test namespace and wait for it to be gone
+			if testNamespace != nil && testNamespace.Name != "" {
+				Expect(k8sClient.Delete(ctx, testNamespace)).Should(Succeed())
+				Eventually(func() error {
+					ns := &corev1.Namespace{}
+					return k8sClient.Get(ctx, client.ObjectKey{Name: testNamespace.Name}, ns)
+				}, "10s", "100ms").Should(HaveOccurred()) // Expect Get to fail (NotFound)
+			}
+		})
+
+		It("Should deny deletion if associated Applications exist", func() {
+			By("creating an associated Application")
+			app := &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-app",
+					Namespace: testNamespace.Name,
+					Labels: map[string]string{
+						tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspaceName,
+					},
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Workspace: workspaceName,
+					Image:     "test-image",
+					Scale: workloadv1alpha1.Scale{
+						MinReplicas: ptr.To[int32](0),
+						MaxReplicas: ptr.To[int32](1),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).Should(Succeed())
+
+			By("validating workspace deletion")
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("workspace is not empty"))
+		})
+
+		It("Should allow deletion if no associated Applications exist", func() {
+			By("ensuring no associated Applications exist")
+			// No app created in this test case
+
+			By("validating workspace deletion")
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+}) // End Describe

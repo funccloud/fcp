@@ -23,6 +23,7 @@ import (
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -61,7 +62,6 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		return fmt.Errorf("expected an Application object but got %T", obj)
 	}
 	applicationlog.Info("Defaulting for Application", "name", application.GetName())
-
 	application.Namespace = application.Spec.Workspace
 	if application.Spec.RolloutDuration == nil {
 		application.Spec.RolloutDuration = &metav1.Duration{
@@ -69,16 +69,13 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		}
 	}
 	if application.Spec.EnableTLS == nil {
-		enabled := workloadv1alpha1.DefaultEnableTLS
-		application.Spec.EnableTLS = &enabled
+		application.Spec.EnableTLS = ptr.To(workloadv1alpha1.DefaultEnableTLS)
 	}
 	if application.Spec.Scale.Metric == "" {
 		application.Spec.Scale.Metric = workloadv1alpha1.MetricConcurrency
-
 	}
 	if application.Spec.Scale.Target == nil && application.Spec.Scale.TargetUtilizationPercentage == nil {
-		targetUtilizationPercentage := workloadv1alpha1.DefaultTargetUtilizationPercentage
-		application.Spec.Scale.TargetUtilizationPercentage = &targetUtilizationPercentage
+		application.Spec.Scale.TargetUtilizationPercentage = ptr.To(workloadv1alpha1.DefaultTargetUtilizationPercentage)
 	}
 	return nil
 }
