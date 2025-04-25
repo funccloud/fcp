@@ -61,9 +61,6 @@ func (m Metric) GetClass() string {
 
 // ApplicationSpec defines the desired state of Application.
 type ApplicationSpec struct {
-	// Workspace is the name of the workspace where the application is deployed
-	// +kubebuilder:validation:Required
-	Workspace string `json:"workspace,omitempty"`
 	// Image is the image of the application
 	// +kubebuilder:validation:Required
 	Image string `json:"image,omitempty"`
@@ -124,7 +121,7 @@ type ApplicationStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName="app"
-// +kubebuilder:printcolumn:name="Workspace",type="string",JSONPath=".spec.workspace",description="The workspace of the application"
+// +kubebuilder:printcolumn:name="Workspace",type="string",JSONPath=".metadata.namespace",description="The workspace of the application"
 // +kubebuilder:printcolumn:name="URLs",type="string",JSONPath=".status.urls",description="The URLs of the application"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].message",description="The status of the workspace"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status",description="The status of the workspace"

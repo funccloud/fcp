@@ -62,7 +62,6 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		return fmt.Errorf("expected an Application object but got %T", obj)
 	}
 	applicationlog.Info("Defaulting for Application", "name", application.GetName())
-	application.Namespace = application.Spec.Workspace
 	if application.Spec.RolloutDuration == nil {
 		application.Spec.RolloutDuration = &metav1.Duration{
 			Duration: workloadv1alpha1.DefaultRolloutDuration,

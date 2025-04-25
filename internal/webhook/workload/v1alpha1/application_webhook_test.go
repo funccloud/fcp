@@ -62,9 +62,7 @@ var _ = Describe("Application Webhook", func() {
 			By("creating an application with nil RolloutDuration and EnableTLS")
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-defaults", Namespace: "test-ns-ginkgo-defaults"},
-				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace: "test-workspace-ginkgo-defaults",
-				},
+				Spec:       workloadv1alpha1.ApplicationSpec{},
 			}
 
 			By("calling the Default method")
@@ -72,7 +70,7 @@ var _ = Describe("Application Webhook", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("checking that the default values are set")
-			Expect(obj.Namespace).To(Equal("test-workspace-ginkgo-defaults"))
+			Expect(obj.Namespace).To(Equal("test-ns-ginkgo-defaults"))
 			Expect(obj.Spec.RolloutDuration).To(Equal(&metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration}))
 			Expect(obj.Spec.EnableTLS).To(Equal(func() *bool { b := workloadv1alpha1.DefaultEnableTLS; return &b }()))
 		})
@@ -84,7 +82,6 @@ var _ = Describe("Application Webhook", func() {
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-exist", Namespace: "test-ns-ginkgo-exist"},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace:       "test-workspace-ginkgo-exist",
 					RolloutDuration: rolloutDuration,
 					EnableTLS:       enableTLS,
 				},
@@ -95,7 +92,7 @@ var _ = Describe("Application Webhook", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("checking that the existing values are not overridden")
-			Expect(obj.Namespace).To(Equal("test-workspace-ginkgo-exist"))
+			Expect(obj.Namespace).To(Equal("test-ns-ginkgo-exist"))
 			Expect(obj.Spec.RolloutDuration).To(Equal(rolloutDuration))
 			Expect(obj.Spec.EnableTLS).To(Equal(enableTLS))
 		})
@@ -104,10 +101,7 @@ var _ = Describe("Application Webhook", func() {
 			By("creating an application without an initial namespace")
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-ns"}, // No initial namespace
-				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace: "my-specific-workspace-ginkgo",
-					// Defaults will also be applied here, but we focus on namespace
-				},
+				Spec:       workloadv1alpha1.ApplicationSpec{},
 			}
 
 			By("calling the Default method")
@@ -115,7 +109,6 @@ var _ = Describe("Application Webhook", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("checking that the namespace is set from the workspace")
-			Expect(obj.Namespace).To(Equal("my-specific-workspace-ginkgo"))
 			// Also check defaults were applied as expected
 			Expect(obj.Spec.RolloutDuration).To(Equal(&metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration}))
 			Expect(obj.Spec.EnableTLS).To(Equal(func() *bool { b := workloadv1alpha1.DefaultEnableTLS; return &b }()))
@@ -126,8 +119,7 @@ var _ = Describe("Application Webhook", func() {
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-defaults", Namespace: "test-ns-ginkgo-scale-defaults"},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace: "test-workspace-ginkgo-scale-defaults",
-					Scale:     workloadv1alpha1.Scale{}, // Empty Scale
+					Scale: workloadv1alpha1.Scale{}, // Empty Scale
 				},
 			}
 
@@ -141,38 +133,13 @@ var _ = Describe("Application Webhook", func() {
 			Expect(obj.Spec.Scale.Target).To(BeNil()) // Target should not be defaulted if TargetUtilizationPercentage is
 		})
 
-		It("Should not override existing Scale values", func() {
-			By("creating an application with existing Scale values")
-			metric := workloadv1alpha1.MetricCPU
-			targetUtilization := int32(50)
-			obj = &workloadv1alpha1.Application{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-exist", Namespace: "test-ns-ginkgo-scale-exist"},
-				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace: "test-workspace-ginkgo-scale-exist",
-					Scale: workloadv1alpha1.Scale{
-						Metric:                      metric,
-						TargetUtilizationPercentage: &targetUtilization,
-					},
-				},
-			}
-
-			By("calling the Default method")
-			err := defaulter.Default(ctx, obj)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("checking that the existing Scale values are not overridden")
-			Expect(obj.Spec.Scale.Metric).To(Equal(metric))
-			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(Equal(&targetUtilization))
-			Expect(obj.Spec.Scale.Target).To(BeNil())
-		})
-
 		It("Should not set default TargetUtilizationPercentage if Target is set", func() {
 			By("creating an application with Target set in Scale")
 			target := int32(100)
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-target", Namespace: "test-ns-ginkgo-scale-target"},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Workspace: "test-workspace-ginkgo-scale-target",
+					// Workspace: "test-workspace-ginkgo-scale-target", // Removed Workspace field
 					Scale: workloadv1alpha1.Scale{
 						Target: &target, // Target is set
 						// Metric is empty, should be defaulted

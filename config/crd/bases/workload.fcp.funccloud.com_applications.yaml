@@ -18,7 +18,7 @@ spec:
   versions:
   - additionalPrinterColumns:
     - description: The workspace of the application
-      jsonPath: .spec.workspace
+      jsonPath: .metadata.namespace
       name: Workspace
       type: string
     - description: The URLs of the application
@@ -810,15 +810,10 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              workspace:
-                description: Workspace is the name of the workspace where the application
-                  is deployed
-                type: string
             required:
             - enableTLS
             - image
             - rolloutDuration
-            - workspace
             type: object
           status:
             description: ApplicationStatus defines the observed state of Application.

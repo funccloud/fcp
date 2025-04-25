@@ -53,8 +53,7 @@ var _ = Describe("Application Controller", func() {
 						Namespace: "default",
 					},
 					Spec: workloadv1alpha1.ApplicationSpec{
-						Workspace: "default",
-						Image:     "nginx:latest",
+						Image: "nginx:latest",
 						Scale: workloadv1alpha1.Scale{
 							MinReplicas: &min,
 							MaxReplicas: &max,
