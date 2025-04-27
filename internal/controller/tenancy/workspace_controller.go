@@ -24,16 +24,16 @@ import (
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors" // Import apierrors
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder" // Import builder
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate" // Import predicate
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // WorkspaceReconciler reconciles a Workspace object
@@ -83,17 +83,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return
 		}
 
-		// Check if the status we computed actually differs from the latest status.
-		// This avoids unnecessary updates.
-		// Note: Comparing complex structs might require a more sophisticated check,
-		// but for typical status updates, this can prevent no-op updates.
-		// Consider using equality.Semantic.DeepEqual if available and necessary.
-		// For simplicity, we'll proceed with the update if fetched successfully.
-		// TODO: Implement a deep comparison if needed to avoid unnecessary updates.
-
-		// Apply the status changes calculated during the reconcile loop
-		// onto the 'latestWorkspace' object before updating.
-		latestWorkspace.Status = workspace.Status // workspace.Status holds the computed status
+		latestWorkspace.Status = workspace.Status
 
 		if updateErr := r.Status().Update(ctx, latestWorkspace); updateErr != nil {
 			// Ignore conflicts on update, as they should trigger a new reconcile anyway.
@@ -257,7 +247,6 @@ func (r *WorkspaceReconciler) reconcileOwnedResource(
 	l logr.Logger,
 	owner *tenancyv1alpha1.Workspace,
 	obj client.Object, // The object to reconcile (e.g., Namespace, Role, RoleBinding)
-	// ownerRef metav1.OwnerReference, // Removed unused parameter
 	mutateFn func() error, // Function to apply specific mutations
 ) error {
 	opRes, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
