@@ -74,9 +74,8 @@ func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAM
 
 		log.Info("Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
 
-		// Use Server-Side Apply (Patch)
-		patch := client.Apply                                                                 // Use Apply patch type
-		opts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("fcp-manager")} // Adjust FieldOwner as needed
+		patch := client.Apply
+		opts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("fcp-manager")}
 		err = k8sClient.Patch(ctx, obj, patch, opts...)
 		if err != nil {
 			log.Error(err, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())

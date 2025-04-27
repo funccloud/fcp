@@ -28,7 +28,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	tenancyv1alpha1webhook "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1" // Import workspace webhook setup
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -65,6 +67,9 @@ var _ = BeforeSuite(func() {
 
 	var err error
 	err = workloadv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = tenancyv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
@@ -108,6 +113,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = SetupApplicationWebhookWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+	err = tenancyv1alpha1webhook.SetupWorkspaceWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:webhook

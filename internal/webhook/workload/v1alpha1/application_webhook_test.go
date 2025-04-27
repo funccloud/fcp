@@ -18,30 +18,29 @@ package v1alpha1
 
 import (
 	"context"
-	// "testing" // Removed testing import as requested
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	// TODO (user): Add any additional imports if needed
+	"k8s.io/utils/ptr"
 )
 
-// Removed TestApplicationCustomDefaulter_Default function as requested.
-
-// Refactoring to use Ginkgo style for Default tests below.
 var _ = Describe("Application Webhook", func() {
 	var (
 		obj       *workloadv1alpha1.Application
-		oldObj    *workloadv1alpha1.Application // Keep for validation tests
-		validator ApplicationCustomValidator    // Keep for validation tests
+		oldObj    *workloadv1alpha1.Application
+		validator ApplicationCustomValidator
 		defaulter ApplicationCustomDefaulter
 		ctx       context.Context
 	)
 
 	BeforeEach(func() {
-		ctx = context.Background() // Initialize context for tests
+		ctx = context.Background()
 		obj = &workloadv1alpha1.Application{}
 		oldObj = &workloadv1alpha1.Application{}
 		validator = ApplicationCustomValidator{}
@@ -53,7 +52,6 @@ var _ = Describe("Application Webhook", func() {
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
 	})
 
 	Context("When creating Application under Defaulting Webhook", func() {
@@ -139,7 +137,6 @@ var _ = Describe("Application Webhook", func() {
 			obj = &workloadv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-app-ginkgo-scale-target", Namespace: "test-ns-ginkgo-scale-target"},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					// Workspace: "test-workspace-ginkgo-scale-target", // Removed Workspace field
 					Scale: workloadv1alpha1.Scale{
 						Target: &target, // Target is set
 						// Metric is empty, should be defaulted
@@ -159,15 +156,153 @@ var _ = Describe("Application Webhook", func() {
 	})
 
 	Context("When creating or updating Application under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks using Ginkgo/Gomega if needed
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     _, err := validator.ValidateCreate(context.TODO(), obj) // Use context.TODO() or a real context
-		//     Expect(err).To(HaveOccurred())
-		// })
-		// ... other validation tests
+		var (
+			app *workloadv1alpha1.Application
+		)
+
+		It("should deny creation if image is missing", func() {
+			ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns-no-image"}}
+			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-image-app",
+					Namespace: "test-ns-no-image",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{}, // No image
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).To(HaveOccurred())
+			// Check for all required fields in the error message
+			Expect(err.Error()).To(And(
+				ContainSubstring("spec.image: Required value"),
+				ContainSubstring("spec.scale.minReplicas: Required value"),
+				ContainSubstring("spec.scale.maxReplicas: Required value"),
+			))
+		})
+
+		It("should deny creation if namespace (workspace) does not exist", func() {
+			// No namespace created here
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-ws-app",
+					Namespace: "nonexistent-ws",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: "nginx:latest",
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).To(HaveOccurred())
+			// Update assertion to match the actual error from k8s API
+			Expect(err.Error()).To(ContainSubstring("namespaces \"nonexistent-ws\" not found"))
+		})
+
+		It("should allow creation if all required fields are present and workspace exists", func() {
+			ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "valid-ws"}}
+			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+			// Create the workspace first
+			ws := &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "valid-ws",
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type:   tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{Kind: "User", Name: "valid-ws"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, ws)).To(Succeed())
+
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					// Use GenerateName to avoid collisions in envtest
+					GenerateName: "valid-app-",
+					Namespace:    "valid-ws",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: "nginx:latest",
+					Scale: workloadv1alpha1.Scale{ // Add scale spec
+						MinReplicas: ptr.To[int32](1),
+						MaxReplicas: ptr.To[int32](1),
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
+	Context("Validating Webhook integration (envtest)", func() {
+		var (
+			app *workloadv1alpha1.Application
+		)
+
+		It("should deny creation if image is missing", func() {
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-image-app",
+					Namespace: "test-ns-no-image",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{}, // No image
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).To(HaveOccurred())
+			// Check for all required fields in the error message
+			Expect(err.Error()).To(And(
+				ContainSubstring("spec.image: Required value"),
+				ContainSubstring("spec.scale.minReplicas: Required value"),
+				ContainSubstring("spec.scale.maxReplicas: Required value"),
+			))
+		})
+
+		It("should deny creation if namespace (workspace) does not exist", func() {
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-ws-app",
+					Namespace: "nonexistent-ws",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: "nginx:latest",
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).To(HaveOccurred())
+			// Update assertion to match the actual error from k8s API
+			Expect(err.Error()).To(ContainSubstring("namespaces \"nonexistent-ws\" not found"))
+		})
+
+		It("should allow creation if all required fields are present and workspace exists", func() {
+			// Create the workspace first
+			ws := &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "valid-ws",
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type:   tenancyv1alpha1.WorkspaceTypePersonal,
+					Owners: []corev1.ObjectReference{{Kind: "User", Name: "valid-ws"}},
+				},
+			}
+			err := k8sClient.Create(ctx, ws)
+			if apierrors.IsAlreadyExists(err) {
+				err = nil
+			}
+			Expect(err).NotTo(HaveOccurred())
+
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					// Use GenerateName to avoid collisions in envtest
+					GenerateName: "valid-app-",
+					Namespace:    "valid-ws",
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: "nginx:latest",
+					Scale: workloadv1alpha1.Scale{ // Add scale spec
+						MinReplicas: ptr.To[int32](1),
+						MaxReplicas: ptr.To[int32](1),
+					},
+				},
+			}
+			err = k8sClient.Create(ctx, app)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 })

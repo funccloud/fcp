@@ -365,6 +365,20 @@ var _ = Describe("Workspace Webhook", func() {
 			Expect(k8sClient.Create(ctx, testNamespace)).Should(Succeed())
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(testNamespace), testNamespace)).Should(Succeed())
 
+			ws := &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testNamespace.Name,
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypeOrganization,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: "test-deleter",
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, ws)).Should(Succeed())
+
 			validator = WorkspaceCustomValidator{Client: k8sClient}
 			Expect(validator.Client).NotTo(BeNil(), "Validator client should be initialized")
 			obj = &tenancyv1alpha1.Workspace{
@@ -376,7 +390,7 @@ var _ = Describe("Workspace Webhook", func() {
 					APIVersion: tenancyv1alpha1.GroupVersion.String(),
 				},
 				Spec: tenancyv1alpha1.WorkspaceSpec{
-					Type: tenancyv1alpha1.WorkspaceTypeOrganization, // Type doesn't matter much for delete validation
+					Type: tenancyv1alpha1.WorkspaceTypeOrganization,
 					Owners: []corev1.ObjectReference{{
 						Kind: "Group",
 						Name: "test-group",
@@ -427,8 +441,9 @@ var _ = Describe("Workspace Webhook", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-app",
 					Namespace: testNamespace.Name,
+					// Add the label that ValidateDelete checks for
 					Labels: map[string]string{
-						tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspaceName,
+						tenancyv1alpha1.WorkspaceLinkedResourceLabel: testNamespace.Name,
 					},
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
@@ -441,15 +456,28 @@ var _ = Describe("Workspace Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, app)).Should(Succeed())
 
+			// Ensure the application is findable by label before validating deletion
+			Eventually(func() error {
+				appList := &workloadv1alpha1.ApplicationList{}
+				return k8sClient.List(ctx, appList, client.MatchingLabels{
+					tenancyv1alpha1.WorkspaceLinkedResourceLabel: testNamespace.Name,
+				}, client.Limit(1))
+			}, "5s", "250ms").Should(Succeed(), "Application should be listable by label")
+
 			By("validating workspace deletion")
+			// Use the workspace object created in BeforeEach, ensuring its name matches the namespace
+			obj.Name = testNamespace.Name
 			_, err := validator.ValidateDelete(ctx, obj)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("workspace is not empty"))
+			Expect(err.Error()).To(ContainSubstring("workspace cannot be deleted because it contains 1 application(s)"))
 		})
 
 		It("Should allow deletion if no associated Applications exist", func() {
 			By("ensuring no associated Applications exist")
+			// (No application created in this test's scope)
 			By("validating workspace deletion")
+			// Use the workspace object created in BeforeEach, ensuring its name matches the namespace
+			obj.Name = testNamespace.Name
 			_, err := validator.ValidateDelete(ctx, obj)
 			Expect(err).NotTo(HaveOccurred())
 		})

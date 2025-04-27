@@ -20,11 +20,15 @@ import (
 	"context"
 	"fmt"
 
+	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -37,7 +41,9 @@ var applicationlog = logf.Log.WithName("application-resource")
 // SetupApplicationWebhookWithManager registers the webhook for Application in the manager.
 func SetupApplicationWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&workloadv1alpha1.Application{}).
-		WithValidator(&ApplicationCustomValidator{}).
+		WithValidator(&ApplicationCustomValidator{
+			Client: mgr.GetClient(),
+		}).
 		WithDefaulter(&ApplicationCustomDefaulter{}).
 		Complete()
 }
@@ -87,7 +93,7 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ApplicationCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
+	client.Client
 }
 
 var _ webhook.CustomValidator = &ApplicationCustomValidator{}
@@ -100,8 +106,24 @@ func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj run
 	}
 	applicationlog.Info("Validation for Application upon creation", "name", application.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
+	var errs field.ErrorList
 
+	// check if workspace exists and namespaces are the same name
+	workspace := tenancyv1alpha1.Workspace{}
+	if err := v.Get(ctx, client.ObjectKey{Name: application.Namespace}, &workspace); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			return nil, err
+		}
+		errs = append(errs, field.Invalid(field.NewPath("metadata").Child("namespace"), application.Namespace, "workspace not found"))
+	}
+	if application.Spec.Image == "" {
+		errs = append(errs, field.Required(field.NewPath("spec").Child("image"), "image is required"))
+	}
+	if len(errs) > 0 {
+		return nil, apierrors.NewInvalid(
+			workloadv1alpha1.GroupVersion.WithKind("Application").GroupKind(),
+			application.GetName(), errs)
+	}
 	return nil, nil
 }
 

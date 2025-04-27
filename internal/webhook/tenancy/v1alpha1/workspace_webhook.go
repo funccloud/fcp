@@ -137,18 +137,26 @@ func (v *WorkspaceCustomValidator) ValidateDelete(ctx context.Context, obj runti
 	}
 	workspacelog.Info("Validation for Workspace upon deletion", "name", workspace.GetName())
 	apps := workloadv1alpha1.ApplicationList{}
+	// List applications using the workspace label selector
 	if err := v.List(ctx, &apps, client.MatchingLabels{
 		tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspace.Name,
 	}); err != nil {
-		return nil, err
+		if !apierrors.IsNotFound(err) {
+			workspacelog.Error(err, "Failed to list applications during workspace deletion validation", "workspace", workspace.Name)
+			return nil, fmt.Errorf("failed to check for associated applications: %w", err)
+		}
+		workspacelog.Info("No applications found (or Application CRD not found) during workspace deletion validation, allowing deletion", "workspace", workspace.Name)
+		return nil, nil
 	}
 	if len(apps.Items) > 0 {
-		return nil, apierrors.NewInvalid(
-			tenancyv1alpha1.GroupVersion.WithKind("Workspace").GroupKind(),
+		workspacelog.Info("Denying workspace deletion because associated applications exist", "workspace", workspace.Name, "count", len(apps.Items))
+		return nil, apierrors.NewForbidden(
+			tenancyv1alpha1.GroupVersion.WithResource("workspaces").GroupResource(),
 			workspace.GetName(),
-			field.ErrorList{field.Invalid(field.NewPath("metadata").Child("name"), workspace.Name, "workspace is not empty")},
+			fmt.Errorf("workspace cannot be deleted because it contains %d application(s)", len(apps.Items)),
 		)
 	}
+	workspacelog.Info("Allowing workspace deletion as no associated applications were found", "workspace", workspace.Name)
 	return nil, nil
 }
 
