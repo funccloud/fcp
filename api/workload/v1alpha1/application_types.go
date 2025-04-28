@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	"time"
 
-	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/serving/pkg/apis/autoscaling"
@@ -28,12 +27,14 @@ import (
 const (
 	// ApplicationFinalizer is the finalizer for the Application
 	ApplicationFinalizer = "application.fcp.funccloud.com/finalizer"
+	// ApplicationLabel is the label for the Application
+	ApplicationLabel = "fcp.funccloud.com/application"
 	// DefaultRolloutDuration is the default rollout duration for the Application
 	DefaultRolloutDuration = 5 * time.Minute
 	// DefaultEnableTLS is the default enable TLS for the Application
 	DefaultEnableTLS = true
-	// DefaultTargetUtilizationPercentage is the default target utilization percentage for the Application
-	DefaultTargetUtilizationPercentage = int32(80)
+	// DefaultTargetUtilization is the default target utilization for the Application
+	DefaultTargetUtilization = int32(80)
 )
 
 type Metric string
@@ -113,7 +114,7 @@ type Scale struct {
 
 // ApplicationStatus defines the observed state of Application.
 type ApplicationStatus struct {
-	tenancyv1alpha1.Status `json:",inline"`
+	Status `json:",inline"` // Embed workload status
 	// URLs is the list of URLs of the application
 	URLs []string `json:"urls,omitempty"`
 }

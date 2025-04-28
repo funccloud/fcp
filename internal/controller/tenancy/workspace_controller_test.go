@@ -17,7 +17,6 @@ limitations under the License.
 package tenancy
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -35,8 +34,6 @@ import (
 var _ = Describe("Workspace Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
-
-		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name: resourceName,

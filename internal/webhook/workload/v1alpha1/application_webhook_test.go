@@ -127,8 +127,8 @@ var _ = Describe("Application Webhook", func() {
 
 			By("checking that the default Scale values are set")
 			Expect(obj.Spec.Scale.Metric).To(Equal(workloadv1alpha1.MetricConcurrency))
-			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(Equal(func() *int32 { i := workloadv1alpha1.DefaultTargetUtilizationPercentage; return &i }()))
-			Expect(obj.Spec.Scale.Target).To(BeNil()) // Target should not be defaulted if TargetUtilizationPercentage is
+			Expect(obj.Spec.Scale.Target).To(Equal(ptr.To(workloadv1alpha1.DefaultTargetUtilization)))
+			Expect(obj.Spec.Scale.TargetUtilizationPercentage).To(BeNil())
 		})
 
 		It("Should not set default TargetUtilizationPercentage if Target is set", func() {

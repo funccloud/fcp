@@ -24,20 +24,26 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	"go.funccloud.dev/fcp/internal/yamlutil"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
+	servingv1beta1 "knative.dev/serving/pkg/apis/serving/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+
+const (
+	// knativeCRDsURL is the URL to the Knative CRDs YAML file.
+	knativeCRDsURL = "https://github.com/knative/serving/releases/download/knative-v1.17.0/serving-crds.yaml"
+)
 
 var (
 	ctx       context.Context
@@ -83,6 +89,13 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+	// Install knative CRDs
+	err = yamlutil.ApplyManifestFromURL(ctx, k8sClient, logf.Log, knativeCRDsURL)
+	Expect(err).NotTo(HaveOccurred())
+	err = servingv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = servingv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = AfterSuite(func() {

@@ -24,6 +24,7 @@ import (
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -83,20 +84,22 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return
 		}
 
-		latestWorkspace.Status = workspace.Status
-
-		if updateErr := r.Status().Update(ctx, latestWorkspace); updateErr != nil {
-			// Ignore conflicts on update, as they should trigger a new reconcile anyway.
-			if apierrors.IsConflict(updateErr) { // Use apierrors.IsConflict
-				l.Info("Conflict during status update, requeueing.", "workspace", req.NamespacedName)
-				// Set result to requeue if not already set by the main reconcile logic
-				if err == nil && result.IsZero() {
-					result = ctrl.Result{Requeue: true}
+		// Only update if the status has changed.
+		if !equality.Semantic.DeepEqual(latestWorkspace.Status, workspace.Status) {
+			latestWorkspace.Status = workspace.Status
+			if updateErr := r.Status().Update(ctx, latestWorkspace); updateErr != nil {
+				// Ignore conflicts on update, as they should trigger a new reconcile anyway.
+				if apierrors.IsConflict(updateErr) { // Use apierrors.IsConflict
+					l.Info("Conflict during status update, requeueing.", "workspace", req.NamespacedName)
+					// Set result to requeue if not already set by the main reconcile logic
+					if err == nil && result.IsZero() {
+						result = ctrl.Result{Requeue: true}
+					}
+					return // Don't aggregate conflict errors, let requeue handle it.
 				}
-				return // Don't aggregate conflict errors, let requeue handle it.
+				l.Error(updateErr, "unable to update Workspace status", "workspace", req.NamespacedName)
+				err = kerrors.NewAggregate([]error{err, fmt.Errorf("failed to update workspace status: %w", updateErr)}) // Combine original error with status update error
 			}
-			l.Error(updateErr, "unable to update Workspace status", "workspace", req.NamespacedName)
-			err = kerrors.NewAggregate([]error{err, fmt.Errorf("failed to update workspace status: %w", updateErr)}) // Combine original error with status update error
 		}
 	}()
 
@@ -247,7 +250,7 @@ func (r *WorkspaceReconciler) reconcileOwnedResource(
 	l logr.Logger,
 	owner *tenancyv1alpha1.Workspace,
 	obj client.Object, // The object to reconcile (e.g., Namespace, Role, RoleBinding)
-	mutateFn func() error, // Function to apply specific mutations
+	mutateFn func() error,
 ) error {
 	opRes, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		// Apply common mutations

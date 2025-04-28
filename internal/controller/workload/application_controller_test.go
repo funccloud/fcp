@@ -17,79 +17,366 @@ limitations under the License.
 package workload
 
 import (
-	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"k8s.io/utils/ptr"
+	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
+	servingv1beta1 "knative.dev/serving/pkg/apis/serving/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var _ = Describe("Application Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	const (
+		AppName      = "test-app"
+		AppNamespace = "default"
+		AppImage     = "test-image:latest"
+		AppDomain    = "test-app.example.com"
+		timeout      = time.Second * 10
+		interval     = time.Millisecond * 250
+	)
 
-		ctx := context.Background()
+	appKey := types.NamespacedName{Name: AppName, Namespace: AppNamespace}
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-		application := &workloadv1alpha1.Application{}
+	Context("When reconciling a basic Application", func() {
+		var app *workloadv1alpha1.Application
+		var cr ApplicationReconciler // Declare cr here
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Application")
-			err := k8sClient.Get(ctx, typeNamespacedName, application)
-			enabled := false
-			min := int32(0)
-			max := int32(1)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &workloadv1alpha1.Application{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: workloadv1alpha1.ApplicationSpec{
-						Image: "nginx:latest",
-						Scale: workloadv1alpha1.Scale{
-							MinReplicas: &min,
-							MaxReplicas: &max,
-						},
-						EnableTLS: &enabled,
-						RolloutDuration: &metav1.Duration{
-							Duration: 0,
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
-
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &workloadv1alpha1.Application{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Application")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ApplicationReconciler{
+			// Initialize cr here, after k8sClient is set up
+			cr = ApplicationReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
-
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      AppName,
+					Namespace: AppNamespace,
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: AppImage,
+					Scale: workloadv1alpha1.Scale{ // Removed pointer
+						MinReplicas: ptr.To[int32](1),
+						MaxReplicas: ptr.To[int32](1),
+					},
+					RolloutDuration: &metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration},
+					EnableTLS:       ptr.To(workloadv1alpha1.DefaultEnableTLS),
+				},
+			}
+			err := k8sClient.Create(ctx, app)
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			// Clean up the application
+			Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
+			// Use context with logger
+			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Wait for deletion
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, appKey, app)
+				return apierrors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+			ksvc := &servingv1.Service{ObjectMeta: metav1.ObjectMeta{Name: AppName, Namespace: AppNamespace}}
+			_ = k8sClient.Delete(ctx, ksvc)
+		})
+
+		It("Should add the finalizer", func() {
+			Eventually(func(g Gomega) {
+				fetchedApp := &workloadv1alpha1.Application{}
+				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
+				g.Expect(controllerutil.ContainsFinalizer(fetchedApp, workloadv1alpha1.ApplicationFinalizer)).Should(BeTrue())
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("Should set the status to Ready", func() {
+			Eventually(func(g Gomega) {
+				fetchedApp := &workloadv1alpha1.Application{}
+				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
+				g.Expect(fetchedApp.Status.ObservedGeneration).Should(Equal(fetchedApp.Generation))
+				readyCond := fetchedApp.Status.GetCondition(workloadv1alpha1.ReadyConditionType)
+				g.Expect(readyCond).NotTo(BeNil())
+				g.Expect(readyCond.Status).Should(Equal(metav1.ConditionTrue))
+				g.Expect(readyCond.Reason).Should(Equal(workloadv1alpha1.ResourcesCreatedReason))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("Should create a Knative Service with correct spec and owner reference", func() {
+			ksvcKey := types.NamespacedName{Name: AppName, Namespace: AppNamespace}
+			Eventually(func(g Gomega) {
+				ksvc := &servingv1.Service{}
+				g.Expect(k8sClient.Get(ctx, ksvcKey, ksvc)).Should(Succeed())
+
+				// Check Owner Reference
+				g.Expect(ksvc.OwnerReferences).NotTo(BeEmpty())
+				g.Expect(ksvc.OwnerReferences[0].APIVersion).Should(Equal(workloadv1alpha1.GroupVersion.String()))
+				g.Expect(ksvc.OwnerReferences[0].Kind).Should(Equal("Application"))
+				g.Expect(ksvc.OwnerReferences[0].Name).Should(Equal(AppName))
+				g.Expect(ksvc.OwnerReferences[0].UID).Should(Equal(app.UID)) // Check UID after app is created
+
+				// Check basic spec details
+				g.Expect(ksvc.Spec.Template.Spec.Containers).NotTo(BeEmpty())
+				g.Expect(ksvc.Spec.Template.Spec.Containers[0].Image).Should(Equal(AppImage))
+
+				// Check labels
+				g.Expect(ksvc.Labels[workloadv1alpha1.ApplicationLabel]).Should(Equal(AppName))
+				g.Expect(ksvc.Spec.Template.Labels[workloadv1alpha1.ApplicationLabel]).Should(Equal(AppName))
+
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("Should not create a DomainMapping if domain is not specified", func() {
+			dmKey := types.NamespacedName{Name: AppDomain, Namespace: AppNamespace} // Use expected domain name
+			Consistently(func(g Gomega) {
+				dm := &servingv1beta1.DomainMapping{}
+				err := k8sClient.Get(ctx, dmKey, dm)
+				g.Expect(apierrors.IsNotFound(err)).Should(BeTrue())
+			}, time.Second*2, interval).Should(Succeed()) // Check for a short period
+		})
+
+	})
+
+	Context("When reconciling an Application with a Domain", func() {
+		var app *workloadv1alpha1.Application
+		var cr ApplicationReconciler // Declare cr here
+
+		BeforeEach(func() {
+			// Initialize cr here
+			cr = ApplicationReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      AppName,
+					Namespace: AppNamespace,
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image:  AppImage,
+					Domain: AppDomain,
+					Scale: workloadv1alpha1.Scale{ // Removed pointer
+						MinReplicas: ptr.To[int32](1),
+						MaxReplicas: ptr.To[int32](1),
+					},
+					RolloutDuration: &metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration},
+					EnableTLS:       ptr.To(workloadv1alpha1.DefaultEnableTLS),
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			// Clean up the application
+			Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
+			// Use context with logger
+			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Wait for deletion
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, appKey, app)
+				return apierrors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+			// Clean up potentially created resources (best effort)
+			ksvc := &servingv1.Service{ObjectMeta: metav1.ObjectMeta{Name: AppName, Namespace: AppNamespace}}
+			_ = k8sClient.Delete(ctx, ksvc)
+			dm := &servingv1beta1.DomainMapping{ObjectMeta: metav1.ObjectMeta{Name: AppDomain, Namespace: AppNamespace}}
+			_ = k8sClient.Delete(ctx, dm)
+		})
+
+		It("Should create a DomainMapping with correct spec and owner reference", func() {
+			dmKey := types.NamespacedName{Name: AppDomain, Namespace: AppNamespace}
+			Eventually(func(g Gomega) {
+				dm := &servingv1beta1.DomainMapping{}
+				g.Expect(k8sClient.Get(ctx, dmKey, dm)).Should(Succeed())
+
+				// Check Owner Reference
+				g.Expect(dm.OwnerReferences).NotTo(BeEmpty())
+				g.Expect(dm.OwnerReferences[0].APIVersion).Should(Equal(workloadv1alpha1.GroupVersion.String()))
+				g.Expect(dm.OwnerReferences[0].Kind).Should(Equal("Application"))
+				g.Expect(dm.OwnerReferences[0].Name).Should(Equal(AppName))
+				g.Expect(dm.OwnerReferences[0].UID).Should(Equal(app.UID)) // Check UID after app is created
+
+				// Check Spec Ref
+				g.Expect(dm.Spec.Ref.Kind).Should(Equal("Service"))
+				g.Expect(dm.Spec.Ref.Namespace).Should(Equal(AppNamespace))
+				g.Expect(dm.Spec.Ref.Name).Should(Equal(AppName))
+				g.Expect(dm.Spec.Ref.APIVersion).Should(Equal(servingv1.SchemeGroupVersion.String()))
+
+				// Check labels
+				g.Expect(dm.Labels[workloadv1alpha1.ApplicationLabel]).Should(Equal(AppName))
+
+			}, timeout, interval).Should(Succeed())
+		})
+
+	})
+
+	Context("When deleting an Application", func() {
+		var app *workloadv1alpha1.Application
+		var cr ApplicationReconciler // Declare cr here
+
+		BeforeEach(func() {
+			// Initialize cr here
+			cr = ApplicationReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      AppName,
+					Namespace: AppNamespace,
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: AppImage,
+					Scale: workloadv1alpha1.Scale{ // Removed pointer
+						MinReplicas: ptr.To[int32](1),
+						MaxReplicas: ptr.To[int32](1),
+					},
+					RolloutDuration: &metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration},
+					EnableTLS:       ptr.To(workloadv1alpha1.DefaultEnableTLS),
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Ensure the app exists before deleting
+			Eventually(func() error {
+				return k8sClient.Get(ctx, appKey, &workloadv1alpha1.Application{})
+			}, timeout, interval).Should(Succeed())
+
+			// Initiate deletion
+			Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+
+		})
+
+		// No AfterEach needed as the test verifies deletion
+
+		It("Should remove the finalizer", func() {
+			Eventually(func(g Gomega) {
+				fetchedApp := &workloadv1alpha1.Application{}
+				err := k8sClient.Get(ctx, appKey, fetchedApp)
+				// Expect the app to be gone eventually after finalizer removal
+				g.Expect(apierrors.IsNotFound(err)).Should(BeTrue())
+			}, timeout, interval).Should(Succeed())
 		})
 	})
+
+	Context("When reconciling an Application that does not exist", func() {
+		It("Should return nil and not error", func() {
+			reconciler := &ApplicationReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			req := ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: "non-existent-app", Namespace: AppNamespace},
+			}
+			// Use context with logger
+			result, err := reconciler.Reconcile(ctx, req)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result).Should(Equal(ctrl.Result{}))
+		})
+	})
+
+	// Add more tests for specific annotation settings (TLS, scaling), status updates on errors, etc.
+	Context("When reconciling Application with specific scaling annotations", func() {
+		var app *workloadv1alpha1.Application
+		var cr ApplicationReconciler // Declare cr here
+
+		BeforeEach(func() {
+			// Initialize cr here
+			cr = ApplicationReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			app = &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      AppName,
+					Namespace: AppNamespace,
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: AppImage,
+					Scale: workloadv1alpha1.Scale{ // Removed pointer
+						MinReplicas:                 ptr.To[int32](2),
+						MaxReplicas:                 ptr.To[int32](5),
+						Metric:                      workloadv1alpha1.MetricCPU,
+						Target:                      ptr.To[int32](80), // Target is deprecated but let's test it
+						TargetUtilizationPercentage: ptr.To[int32](75),
+					},
+					EnableTLS:       ptr.To(false), // Test disabling TLS
+					RolloutDuration: &metav1.Duration{Duration: workloadv1alpha1.DefaultRolloutDuration},
+				},
+			}
+			err := k8sClient.Create(ctx, app)
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			// Use context with logger
+			_, err = cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
+			// Use context with logger
+			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, appKey, app)
+				return apierrors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+			ksvc := &servingv1.Service{ObjectMeta: metav1.ObjectMeta{Name: AppName, Namespace: AppNamespace}}
+			_ = k8sClient.Delete(ctx, ksvc)
+		})
+
+		It("Should set the correct annotations on the Knative Service", func() {
+			ksvcKey := types.NamespacedName{Name: AppName, Namespace: AppNamespace}
+			Eventually(func(g Gomega) {
+				ksvc := &servingv1.Service{}
+				g.Expect(k8sClient.Get(ctx, ksvcKey, ksvc)).Should(Succeed())
+
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/min-scale", "2"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/max-scale", "5"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/initial-scale", "2")) // Should match minScale
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/metric", "cpu"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/class", "hpa.autoscaling.knative.dev"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/target", "80"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/target-utilization-percentage", "75"))
+				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("networking.knative.dev/disable-external-domain-tls", "true")) // TLS disabled
+
+				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/min-scale", "2"))
+				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/max-scale", "5"))
+				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("networking.knative.dev/disable-external-domain-tls", "true"))
+
+			}, timeout, interval).Should(Succeed())
+		})
+	})
+
 })

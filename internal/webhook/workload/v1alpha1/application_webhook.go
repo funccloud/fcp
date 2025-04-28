@@ -80,7 +80,7 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		application.Spec.Scale.Metric = workloadv1alpha1.MetricConcurrency
 	}
 	if application.Spec.Scale.Target == nil && application.Spec.Scale.TargetUtilizationPercentage == nil {
-		application.Spec.Scale.TargetUtilizationPercentage = ptr.To(workloadv1alpha1.DefaultTargetUtilizationPercentage)
+		application.Spec.Scale.Target = ptr.To(workloadv1alpha1.DefaultTargetUtilization)
 	}
 	return nil
 }
@@ -135,8 +135,6 @@ func (v *ApplicationCustomValidator) ValidateUpdate(ctx context.Context, oldObj,
 	}
 	applicationlog.Info("Validation for Application upon update", "name", application.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
 	return nil, nil
 }
 
@@ -147,8 +145,6 @@ func (v *ApplicationCustomValidator) ValidateDelete(ctx context.Context, obj run
 		return nil, fmt.Errorf("expected a Application object but got %T", obj)
 	}
 	applicationlog.Info("Validation for Application upon deletion", "name", application.GetName())
-
-	// TODO(user): fill in your validation logic upon object deletion.
 
 	return nil, nil
 }
