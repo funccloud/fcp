@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -93,14 +92,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	go func(ctx context.Context) {
-		if err := resource.CheckOrInstallVersion(ctx, domain, k8sClient, setupLog); err != nil {
-			setupLog.Error(err, "Error checking prerequisites")
-			os.Exit(1)
-		}
-		setupLog.Info("All prerequisites are satisfied")
-	}(ctx)
-
+	if err := resource.CheckOrInstallVersion(ctx, domain, k8sClient, setupLog); err != nil {
+		setupLog.Error(err, "Error checking prerequisites")
+		os.Exit(1)
+	}
+	setupLog.Info("All prerequisites are satisfied")
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and

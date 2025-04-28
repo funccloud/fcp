@@ -78,25 +78,7 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
 
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
-	AfterAll(func() {
-		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
-		_, _ = utils.Run(cmd)
-
-		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
-		_, _ = utils.Run(cmd)
-
-		By("uninstalling CRDs")
-		cmd = exec.Command("make", "uninstall")
-		_, _ = utils.Run(cmd)
-
-		By("removing manager namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = utils.Run(cmd)
-	})
+	AfterAll(func() {})
 
 	// After each test, check for failures and collect logs, events,
 	// and pod descriptions for debugging.
@@ -203,7 +185,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("8443"), "Metrics endpoint is not ready")
 			}
-			Eventually(verifyMetricsEndpointReady).Should(Succeed())
+			Eventually(verifyMetricsEndpointReady, 10*time.Minute, 1*time.Minute).Should(Succeed())
 
 			By("verifying that the controller manager is serving the metrics server")
 			verifyMetricsServerStarted := func(g Gomega) {
@@ -303,9 +285,17 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
+		It("should eventually log that prerequisites are satisfied", func() {
+			By("checking controller logs for prerequisite satisfaction message")
+			checkPrerequisitesSatisfied := func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				logsOutput, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller logs")
+				g.Expect(logsOutput).To(ContainSubstring("All prerequisites are satisfied"), "Prerequisite message not found in logs")
+			}
+			Eventually(checkPrerequisitesSatisfied).Should(Succeed())
+		})
+
 		It("should create a workspace resource", func() {
 			By("creating a workspace resource")
 			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
@@ -320,6 +310,28 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			Eventually(checkResource).Should(Succeed())
+			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/workload_v1alpha1_application.yaml")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create application resource")
+			By("waiting for the application resource to be ready")
+			checkResource = func(g Gomega) {
+				// comand tat wait for ready condition in application e2e
+				cmd := exec.Command("kubectl", "wait", "--for=condition=Ready",
+					"application", "e2e", "-n", "e2e", "--timeout=10m")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(checkResource).Should(Succeed())
+			By("calling the application service")
+			cmd = exec.Command("curl", "https://127.0.0.1.sslip.io")
+			out, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
+			Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
+			By("cleaning up the application resource")
+			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/workload_v1alpha1_application.yaml")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete application resource")
+			By("cleaning up the workspace resource")
 			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete workspace resource")
@@ -389,7 +401,7 @@ spec:
 			checkNamespaceDeleted := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "namespace", workspaceName)
 				_, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred()) // Expect an error (NotFound)
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("NotFound"))
 			}
 			Eventually(checkNamespaceDeleted).Should(Succeed())

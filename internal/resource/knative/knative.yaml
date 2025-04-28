@@ -15,6 +15,7 @@ spec:
   config:
     autoscaler:
       enable-scale-to-zero: "true"
+      allow-zero-initial-scale: "true"
       scale-to-zero-grace-period: 30s
     domain:
       "{{ .Domain }}": ""

@@ -4,6 +4,12 @@ metadata:
   labels:
     app.kubernetes.io/name: fcp
     app.kubernetes.io/managed-by: kustomize
-  name: application-sample
+  name: e2e
+  namespace: e2e
 spec:
-  # TODO(user): Add fields here
+  domain: 127.0.0.1.sslip.io
+  enableTLS: false
+  image: ghcr.io/knative/helloworld-go:latest
+  env:
+    - name: TARGET
+      value: "Go Sample v1"

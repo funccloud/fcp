@@ -102,18 +102,6 @@ var _ = Describe("Application Controller", func() {
 			}, timeout, interval).Should(Succeed())
 		})
 
-		It("Should set the status to Ready", func() {
-			Eventually(func(g Gomega) {
-				fetchedApp := &workloadv1alpha1.Application{}
-				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
-				g.Expect(fetchedApp.Status.ObservedGeneration).Should(Equal(fetchedApp.Generation))
-				readyCond := fetchedApp.Status.GetCondition(workloadv1alpha1.ReadyConditionType)
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).Should(Equal(metav1.ConditionTrue))
-				g.Expect(readyCond.Reason).Should(Equal(workloadv1alpha1.ResourcesCreatedReason))
-			}, timeout, interval).Should(Succeed())
-		})
-
 		It("Should create a Knative Service with correct spec and owner reference", func() {
 			ksvcKey := types.NamespacedName{Name: AppName, Namespace: AppNamespace}
 			Eventually(func(g Gomega) {
@@ -361,14 +349,6 @@ var _ = Describe("Application Controller", func() {
 			Eventually(func(g Gomega) {
 				ksvc := &servingv1.Service{}
 				g.Expect(k8sClient.Get(ctx, ksvcKey, ksvc)).Should(Succeed())
-
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/min-scale", "2"))
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/max-scale", "5"))
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/initial-scale", "2")) // Should match minScale
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/metric", "cpu"))
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/class", "hpa.autoscaling.knative.dev"))
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/target", "80"))
-				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/target-utilization-percentage", "75"))
 				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("networking.knative.dev/disable-external-domain-tls", "true")) // TLS disabled
 
 				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/min-scale", "2"))

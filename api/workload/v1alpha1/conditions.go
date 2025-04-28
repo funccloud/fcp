@@ -1,27 +1,31 @@
 package v1alpha1
 
 const (
-	// ReadyConditionType is the condition type for the Ready condition.
+	// ReadyConditionType indicates the overall readiness of the Application resource.
 	ReadyConditionType = "Ready"
-	// KnativeServiceReadyConditionType is the condition type for the KnativeServiceReady condition.
+	// KnativeServiceReadyConditionType indicates the readiness of the underlying Knative Service.
 	KnativeServiceReadyConditionType = "KnativeServiceReady"
-	// DomainMappingReadyConditionType is the condition type for the DomainMappingReady condition.
+	// DomainMappingReadyConditionType indicates the readiness of the Knative DomainMapping.
 	DomainMappingReadyConditionType = "DomainMappingReady"
 )
 
+// Reasons for Condition Types
 const (
-	// ReconciliationFailedReason is the reason when reconciliation fails.
+	// --- Ready Condition Reasons ---
 	ReconciliationFailedReason = "ReconciliationFailed"
-	// ResourcesCreatedReason is the reason when all resources are successfully created/updated.
-	ResourcesCreatedReason = "ResourcesCreated"
-	// KnativeServiceCreationFailedReason is the reason when Knative Service creation fails.
-	KnativeServiceCreationFailedReason = "KnativeServiceCreationFailed"
-	// KnativeServiceReadyReason is the reason when Knative Service is ready.
-	KnativeServiceReadyReason = "KnativeServiceReady"
-	// DomainMappingCreationFailedReason is the reason when DomainMapping creation fails.
+	ResourcesCreatedReason     = "ResourcesCreated"
+
+	// --- KnativeServiceReady Condition Reasons ---
+	KnativeServiceCreationFailedReason    = "KnativeServiceCreationFailed"
+	KnativeServiceStatusCheckFailedReason = "KnativeServiceStatusCheckFailed"
+	KnativeServiceNotFoundReason          = "KnativeServiceNotFound"
+	KnativeServiceNotReadyReason          = "KnativeServiceNotReady"
+	KnativeServiceReadyReason             = "KnativeServiceReady"
+
+	// --- DomainMappingReady Condition Reasons ---
+	DomainMappingCheckFailedReason    = "DomainMappingCheckFailed" // Added
+	DomainMappingConflictReason       = "DomainMappingConflict"    // Added
 	DomainMappingCreationFailedReason = "DomainMappingCreationFailed"
-	// DomainMappingReadyReason is the reason when DomainMapping is ready.
-	DomainMappingReadyReason = "DomainMappingReady"
-	// DomainMappingNotConfiguredReason is the reason when DomainMapping is not configured in the spec.
-	DomainMappingNotConfiguredReason = "DomainMappingNotConfigured"
+	DomainMappingNotConfiguredReason  = "DomainMappingNotConfigured"
+	DomainMappingReadyReason          = "DomainMappingReady"
 )

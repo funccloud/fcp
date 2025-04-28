@@ -35,6 +35,10 @@ const (
 	DefaultEnableTLS = true
 	// DefaultTargetUtilization is the default target utilization for the Application
 	DefaultTargetUtilization = int32(80)
+	// DefaultMinReplicas is the default minimum replicas for the Application
+	DefaultMinReplicas = int32(0)
+	// DefaultMaxReplicas is the default maximum replicas for the Application
+	DefaultMaxReplicas = int32(1)
 )
 
 type Metric string

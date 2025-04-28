@@ -68,6 +68,10 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 		return fmt.Errorf("expected an Application object but got %T", obj)
 	}
 	applicationlog.Info("Defaulting for Application", "name", application.GetName())
+	if application.Labels == nil {
+		application.Labels = make(map[string]string)
+	}
+	application.Labels[tenancyv1alpha1.WorkspaceLinkedResourceLabel] = application.Namespace
 	if application.Spec.RolloutDuration == nil {
 		application.Spec.RolloutDuration = &metav1.Duration{
 			Duration: workloadv1alpha1.DefaultRolloutDuration,
@@ -81,6 +85,12 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 	}
 	if application.Spec.Scale.Target == nil && application.Spec.Scale.TargetUtilizationPercentage == nil {
 		application.Spec.Scale.Target = ptr.To(workloadv1alpha1.DefaultTargetUtilization)
+	}
+	if application.Spec.Scale.MinReplicas == nil {
+		application.Spec.Scale.MinReplicas = ptr.To(workloadv1alpha1.DefaultMinReplicas)
+	}
+	if application.Spec.Scale.MaxReplicas == nil {
+		application.Spec.Scale.MaxReplicas = ptr.To(workloadv1alpha1.DefaultMaxReplicas)
 	}
 	return nil
 }
@@ -99,7 +109,9 @@ type ApplicationCustomValidator struct {
 var _ webhook.CustomValidator = &ApplicationCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Application.
-func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *ApplicationCustomValidator) ValidateCreate(
+	ctx context.Context, obj runtime.Object,
+) (admission.Warnings, error) {
 	application, ok := obj.(*workloadv1alpha1.Application)
 	if !ok {
 		return nil, fmt.Errorf("expected a Application object but got %T", obj)
@@ -114,10 +126,19 @@ func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj run
 		if client.IgnoreNotFound(err) != nil {
 			return nil, err
 		}
-		errs = append(errs, field.Invalid(field.NewPath("metadata").Child("namespace"), application.Namespace, "workspace not found"))
+		errs = append(errs, field.Invalid(field.NewPath("metadata").Child("namespace"),
+			application.Namespace, "workspace not found"))
 	}
 	if application.Spec.Image == "" {
 		errs = append(errs, field.Required(field.NewPath("spec").Child("image"), "image is required"))
+	}
+	if application.Spec.Scale.MinReplicas == nil {
+		errs = append(errs, field.Required(field.NewPath("spec").Child("scale").Child("minReplicas"),
+			"minReplicas is required"))
+	}
+	if application.Spec.Scale.MaxReplicas == nil {
+		errs = append(errs, field.Required(field.NewPath("spec").Child("scale").Child("maxReplicas"),
+			"maxReplicas is required"))
 	}
 	if len(errs) > 0 {
 		return nil, apierrors.NewInvalid(
@@ -128,7 +149,9 @@ func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj run
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Application.
-func (v *ApplicationCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *ApplicationCustomValidator) ValidateUpdate(
+	ctx context.Context, oldObj, newObj runtime.Object,
+) (admission.Warnings, error) {
 	application, ok := newObj.(*workloadv1alpha1.Application)
 	if !ok {
 		return nil, fmt.Errorf("expected a Application object for the newObj but got %T", newObj)
@@ -139,7 +162,9 @@ func (v *ApplicationCustomValidator) ValidateUpdate(ctx context.Context, oldObj,
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Application.
-func (v *ApplicationCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *ApplicationCustomValidator) ValidateDelete(
+	ctx context.Context, obj runtime.Object,
+) (admission.Warnings, error) {
 	application, ok := obj.(*workloadv1alpha1.Application)
 	if !ok {
 		return nil, fmt.Errorf("expected a Application object but got %T", obj)
