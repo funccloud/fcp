@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"knative.dev/networking/pkg/apis/networking"
+	netv1alpha1 "knative.dev/networking/pkg/apis/networking/v1alpha1"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 	"knative.dev/serving/pkg/apis/autoscaling"
 	"knative.dev/serving/pkg/apis/serving"
@@ -144,7 +146,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Message: "Waiting for Knative Service to become ready",
 		})
 		// Don't update ObservedGeneration yet
-		return ctrl.Result{Requeue: true}, nil // Requeue requested by reconcileResources
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil // Requeue requested by reconcileResources
 	}
 
 	// Update status to Ready only if all components are ready
@@ -285,7 +287,11 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 		enableTLS = *app.Spec.EnableTLS
 	}
 	ksvc.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-
+	httpProtocol := netv1alpha1.HTTPOptionEnabled
+	if enableTLS {
+		httpProtocol = netv1alpha1.HTTPOptionRedirected
+	}
+	ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(httpProtocol)
 	// Default Scale values if nil
 	minReplicas := int32(0) // Default minReplicas
 	if app.Spec.Scale.MinReplicas != nil {
@@ -352,7 +358,6 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 	for k, v := range ksvc.Annotations { // Copy annotations from service meta
 		ksvc.Spec.Template.ObjectMeta.Annotations[k] = v
 	}
-
 	return nil
 }
 
@@ -427,6 +432,11 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 			enableTLS = *app.Spec.EnableTLS
 		}
 		dm.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
+		httpProtocol := netv1alpha1.HTTPOptionEnabled
+		if enableTLS {
+			httpProtocol = netv1alpha1.HTTPOptionRedirected
+		}
+		dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(httpProtocol)
 
 		// Set the reference to the Knative Service
 		dm.Spec.Ref = duckv1.KReference{
@@ -507,7 +517,7 @@ func (r *ApplicationReconciler) cleanupOwnedDomainMappings(
 	return nil
 }
 
-// reconcileOwnedResource handles the CreateOrUpdate logic for an owned resource.
+// reconcileOwnedResource handles the Create/Update logic for an owned resource.
 func (r *ApplicationReconciler) reconcileOwnedResource(
 	ctx context.Context,
 	l logr.Logger,
@@ -515,43 +525,88 @@ func (r *ApplicationReconciler) reconcileOwnedResource(
 	obj client.Object, // The object to reconcile (e.g., Knative Service, DomainMapping)
 	mutateFn func() error,
 ) error {
-	opRes, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
-		// Apply common mutations: Label and Owner Reference
-		if obj.GetLabels() == nil {
-			obj.SetLabels(make(map[string]string))
-		}
-		obj.GetLabels()[workloadv1alpha1.ApplicationLabel] = owner.Name // Use ApplicationLabel
+	key := client.ObjectKeyFromObject(obj)
+	resourceKind := obj.GetObjectKind().GroupVersionKind().Kind
+	l = l.WithValues("resource", resourceKind, "name", key.Name, "namespace", key.Namespace)
 
-		if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		// Apply resource-specific mutations
-		if mutateFn != nil {
-			if err := mutateFn(); err != nil {
-				// Wrap mutation error for better context
-				return fmt.Errorf("mutation function failed: %w", err)
-			}
-		}
-		return nil
-	})
-
+	// Attempt to get the existing resource
+	err := r.Get(ctx, key, obj)
 	if err != nil {
-		l.Error(err, "unable to create or update resource",
-			"resource", obj.GetObjectKind().GroupVersionKind().Kind,
-			"name", obj.GetName(),
-			"namespace", obj.GetNamespace())
-		// Return the error to potentially trigger a requeue
-		return fmt.Errorf("failed to create/update %s %s/%s: %w",
-			obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName(), err)
+		if apierrors.IsNotFound(err) {
+			// --- Create Resource ---
+			l.Info("Resource not found, creating.")
+			// Apply mutations before creation
+			if err := r.applyMutations(owner, obj, mutateFn); err != nil {
+				l.Error(err, "Failed to apply mutations before creation")
+				return err // Return mutation error
+			}
+			if err := r.Create(ctx, obj); err != nil {
+				l.Error(err, "Failed to create resource")
+				// Wrap error for context
+				return fmt.Errorf("failed to create %s %s: %w", resourceKind, key, err)
+			}
+			l.Info("Resource created successfully")
+			return nil // Creation successful
+		}
+		// Other Get error
+		l.Error(err, "Failed to get resource")
+		return fmt.Errorf("failed to get %s %s: %w", resourceKind, key, err)
 	}
 
-	if opRes != controllerutil.OperationResultNone {
-		l.Info("Resource reconciled",
-			"resource", obj.GetObjectKind().GroupVersionKind().Kind,
-			"name", obj.GetName(),
-			"namespace", obj.GetNamespace(),
-			"operation", opRes)
+	// --- Update Resource ---
+	existing := obj.DeepCopyObject().(client.Object) // Keep a copy of the current state
+
+	// Apply mutations to the object fetched by Get
+	if err := r.applyMutations(owner, obj, mutateFn); err != nil {
+		l.Error(err, "Failed to apply mutations before update")
+		return err // Return mutation error
+	}
+
+	// Check if the mutation resulted in any changes
+	if equality.Semantic.DeepEqual(existing, obj) {
+		l.V(1).Info("No changes detected, skipping update.")
+		return nil // No update needed
+	}
+
+	l.Info("Resource differs, attempting update.")
+	if err := r.Update(ctx, obj); err != nil {
+		if apierrors.IsConflict(err) {
+			l.Info("Conflict detected during update, requeueing.")
+			// Return the conflict error directly, controller-runtime will handle requeue
+			return err
+		}
+		l.Error(err, "Failed to update resource")
+		// Wrap error for context
+		return fmt.Errorf("failed to update %s %s: %w", resourceKind, key, err)
+	}
+
+	l.Info("Resource updated successfully")
+	return nil // Update successful
+}
+
+// applyMutations applies common and specific mutations to the object.
+// Helper function extracted from the original CreateOrUpdate logic.
+func (r *ApplicationReconciler) applyMutations(
+	owner *workloadv1alpha1.Application,
+	obj client.Object,
+	mutateFn func() error,
+) error {
+	// Apply common mutations: Label and Owner Reference
+	if obj.GetLabels() == nil {
+		obj.SetLabels(make(map[string]string))
+	}
+	obj.GetLabels()[workloadv1alpha1.ApplicationLabel] = owner.Name // Use ApplicationLabel
+
+	if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set controller reference: %w", err)
+	}
+
+	// Apply resource-specific mutations
+	if mutateFn != nil {
+		if err := mutateFn(); err != nil {
+			// Wrap mutation error for better context
+			return fmt.Errorf("mutation function failed: %w", err)
+		}
 	}
 	return nil
 }

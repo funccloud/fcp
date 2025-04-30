@@ -27,9 +27,13 @@ var knativeServingYAML []byte // Embed the knative.yaml file
 
 const (
 	// Knative Operator version and URL
-	knativeOperatorVersion = "v1.17.6"
+	knativeOperatorVersion = "v1.18.0"
 	knativeOperatorURL     = "https://github.com/knative/operator/releases/download/knative-" +
 		knativeOperatorVersion + "/operator.yaml"
+
+	// Knative Serving Default Domain URL (for Kind)
+	knativeServingDefaultDomainURL = "https://github.com/knative/serving/releases/download/knative-" +
+		knativeOperatorVersion + "/serving-default-domain.yaml" // Use the same version for consistency
 
 	// Knative Operator details
 	knativeOperatorNamespace  = "knative-operator"
@@ -131,9 +135,15 @@ func InstallKnative(ctx context.Context, domain, issuerName string, isKind bool,
 	if err = waitForOperatorManagedDeploymentsReady(ctx, k8sClient, log); err != nil { // Assign error to existing 'err' variable
 		return err // Error already logged in the function
 	}
-
-	// Note: patchKnativeNetworkConfig is no longer needed as Kourier is configured via KnativeServing CR
-
+	if isKind {
+		log.Info("Applying Knative Serving default domain manifest for Kind...", "url", knativeServingDefaultDomainURL)
+		if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, log, knativeServingDefaultDomainURL); err != nil {
+			log.Error(err, "Failed to apply Knative Serving default domain manifest", "url", knativeServingDefaultDomainURL)
+			return fmt.Errorf("failed to apply Knative Serving default domain manifest from %s: %w", knativeServingDefaultDomainURL, err)
+		} else {
+			log.Info("Successfully applied Knative Serving default domain manifest.")
+		}
+	}
 	log.Info("Knative Operator installation and Serving readiness checks completed.")
 	return nil
 }

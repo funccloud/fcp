@@ -71,18 +71,23 @@ spec:
           capabilities:
             drop:
             - "ALL"
+        startupProbe:          # Add startupProbe
+          httpGet:
+            path: /healthz     # Use healthz endpoint for startup check
+            port: 8081
+          initialDelaySeconds: 90  # Start checking after 15 seconds
+          periodSeconds: 10      # Check every 10 seconds during startup
+          failureThreshold: 5   # Allow 18 * 10s = 180 seconds total for startup
         livenessProbe:
           httpGet:
             path: /healthz
             port: 8081
-          initialDelaySeconds: 90
-          periodSeconds: 90
+          periodSeconds: 10      # Keep periodSeconds at 10
         readinessProbe:
           httpGet:
             path: /readyz
             port: 8081
-          initialDelaySeconds: 90
-          periodSeconds: 90
+          periodSeconds: 10      # Keep periodSeconds at 10
         # TODO(user): Configure the resources accordingly based on the project requirements.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:

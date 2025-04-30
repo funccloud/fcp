@@ -296,7 +296,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(checkPrerequisitesSatisfied).Should(Succeed())
 		})
 
-		It("should create a workspace resource", func() {
+		It("should create resource", func() {
 			By("creating a workspace resource")
 			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
 			_, err := utils.Run(cmd)
@@ -310,6 +310,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			Eventually(checkResource).Should(Succeed())
+			By("creating a workspace resource for application")
 			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/workload_v1alpha1_application.yaml")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create application resource")
@@ -323,10 +324,17 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(checkResource).Should(Succeed())
 			By("calling the application service")
-			cmd = exec.Command("curl", "https://127.0.0.1.sslip.io")
-			out, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
-			Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
+			callApp := func(g Gomega) {
+				cmd = exec.Command("curl", "-v", "http://e2e.e2e.127.0.0.1.sslip.io")
+				out, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
+				Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
+				cmd = exec.Command("curl", "-v", "http://127.0.0.1.sslip.io")
+				out, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
+				Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
+			}
+			Eventually(callApp, 10*time.Minute, 10*time.Second).Should(Succeed())
 			By("cleaning up the application resource")
 			cmd = exec.Command("kubectl", "delete", "-f", "config/samples/workload_v1alpha1_application.yaml")
 			_, err = utils.Run(cmd)
