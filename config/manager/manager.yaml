@@ -75,14 +75,14 @@ spec:
           httpGet:
             path: /healthz     # Use healthz endpoint for startup check
             port: 8081
-          initialDelaySeconds: 90  # Start checking after 15 seconds
-          periodSeconds: 10      # Check every 10 seconds during startup
-          failureThreshold: 5   # Allow 18 * 10s = 180 seconds total for startup
+          initialDelaySeconds: 150 
+          periodSeconds: 10      
+          failureThreshold: 5   
         livenessProbe:
           httpGet:
             path: /healthz
             port: 8081
-          periodSeconds: 10      # Keep periodSeconds at 10
+          periodSeconds: 10      
         readinessProbe:
           httpGet:
             path: /readyz

@@ -108,23 +108,14 @@ type ApplicationCustomValidator struct {
 
 var _ webhook.CustomValidator = &ApplicationCustomValidator{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Application.
-func (v *ApplicationCustomValidator) ValidateCreate(
-	ctx context.Context, obj runtime.Object,
-) (admission.Warnings, error) {
-	application, ok := obj.(*workloadv1alpha1.Application)
-	if !ok {
-		return nil, fmt.Errorf("expected a Application object but got %T", obj)
-	}
-	applicationlog.Info("Validation for Application upon creation", "name", application.GetName())
-
+func (v *ApplicationCustomValidator) validate(ctx context.Context, application *workloadv1alpha1.Application) field.ErrorList {
 	var errs field.ErrorList
-
-	// check if workspace exists and namespaces are the same name
 	workspace := tenancyv1alpha1.Workspace{}
 	if err := v.Get(ctx, client.ObjectKey{Name: application.Namespace}, &workspace); err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			return nil, err
+			errs = append(errs, field.Invalid(field.NewPath("metadata").Child("namespace"),
+				application.Namespace, err.Error()))
+			return errs
 		}
 		errs = append(errs, field.Invalid(field.NewPath("metadata").Child("namespace"),
 			application.Namespace, "workspace not found"))
@@ -140,6 +131,24 @@ func (v *ApplicationCustomValidator) ValidateCreate(
 		errs = append(errs, field.Required(field.NewPath("spec").Child("scale").Child("maxReplicas"),
 			"maxReplicas is required"))
 	}
+	if *application.Spec.Scale.MinReplicas > *application.Spec.Scale.MaxReplicas {
+		errs = append(errs, field.Invalid(field.NewPath("spec", "scale", "minReplicas"), application.Spec.Scale.MinReplicas, "minReplicas must be less than or equal to maxReplicas"))
+	}
+	return errs
+}
+
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Application.
+func (v *ApplicationCustomValidator) ValidateCreate(
+	ctx context.Context, obj runtime.Object,
+) (admission.Warnings, error) {
+	application, ok := obj.(*workloadv1alpha1.Application)
+	if !ok {
+		return nil, fmt.Errorf("expected a Application object but got %T", obj)
+	}
+	applicationlog.Info("Validation for Application upon creation", "name", application.GetName())
+
+	errs := v.validate(ctx, application)
+	// check if workspace exists and namespaces are the same nam
 	if len(errs) > 0 {
 		return nil, apierrors.NewInvalid(
 			workloadv1alpha1.GroupVersion.WithKind("Application").GroupKind(),
@@ -157,7 +166,12 @@ func (v *ApplicationCustomValidator) ValidateUpdate(
 		return nil, fmt.Errorf("expected a Application object for the newObj but got %T", newObj)
 	}
 	applicationlog.Info("Validation for Application upon update", "name", application.GetName())
-
+	errs := v.validate(ctx, application)
+	if len(errs) > 0 {
+		return nil, apierrors.NewInvalid(
+			workloadv1alpha1.GroupVersion.WithKind("Application").GroupKind(),
+			application.GetName(), errs)
+	}
 	return nil, nil
 }
 

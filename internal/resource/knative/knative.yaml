@@ -25,6 +25,7 @@ spec:
         kind: ClusterIssuer
     network:
       ingress-class: "kourier.ingress.networking.knative.dev"
+      certificate-class: "cert-manager.certificate.networking.knative.dev"
       autocreate-cluster-domain-claims: "true"
       external-domain-tls: Enabled
       http-protocol: Redirected

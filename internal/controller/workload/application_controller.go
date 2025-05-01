@@ -40,8 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil" // Ensure controllerutil is imported
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -178,14 +177,31 @@ func (r *ApplicationReconciler) reconcileResources(
 		return false, fmt.Errorf("failed to reconcile Knative Service: %w", err)
 	}
 
-	// 2. Reconcile Domain Mapping (only if Knative Service is ready)
-	if err := r.reconcileDomainMapping(ctx, l, app, ksvc); err != nil {
+	// 2. Reconcile Domain Mapping
+	dm, err := r.reconcileDomainMapping(ctx, l, app, ksvc)
+	if err != nil {
 		return false, fmt.Errorf("failed to reconcile Domain Mapping: %w", err)
 	}
 
 	// 3. Update Status URLs
 	r.updateStatusURLs(l, app, ksvc)
 
+	if !requeueNeeded && *app.Spec.EnableTLS {
+		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, ksvc, func() error {
+			ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
+			return nil
+		})
+		if err != nil {
+			return true, fmt.Errorf("failed to force TLS redirect: %w", err)
+		}
+		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, dm, func() error {
+			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
+			return nil
+		})
+		if err != nil {
+			return true, fmt.Errorf("failed to force TLS redirect: %w", err)
+		}
+	}
 	// If we reached here without returning, no requeue is needed and no error occurred
 	return requeueNeeded, nil
 }
@@ -207,9 +223,21 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		},
 	}
 
-	err := r.reconcileOwnedResource(ctx, l, app, ksvc, func() error {
-		return r.mutateKnativeService(app, ksvc) // Extracted mutation logic
+	// Use controllerutil.CreateOrUpdate
+	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, ksvc, func() error {
+		// Set the application label
+		if ksvc.Labels == nil {
+			ksvc.Labels = make(map[string]string)
+		}
+		ksvc.Labels[workloadv1alpha1.ApplicationLabel] = app.Name
+
+		// Apply mutations from the Application spec
+		r.mutateKnativeService(app, ksvc)
+
+		// Set the controller reference
+		return controllerutil.SetControllerReference(app, ksvc, r.Scheme)
 	})
+
 	if err != nil {
 		app.Status.SetCondition(metav1.Condition{
 			Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
@@ -219,8 +247,13 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		})
 		return nil, false, fmt.Errorf("failed to reconcile Knative Service: %w", err)
 	}
+	if opResult != controllerutil.OperationResultNone {
+		l.Info("Knative Service reconciled", "operation", opResult)
+	}
 
 	// --- Check Knative Service Readiness ---
+	// No need to re-fetch immediately after CreateOrUpdate unless status is critical
+	// The existing logic below handles fetching the latest status
 	latestKsvc := &servingv1.Service{}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(ksvc), latestKsvc); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -273,7 +306,8 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 }
 
 // mutateKnativeService applies the desired state from the Application spec to the Knative Service.
-func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Application, ksvc *servingv1.Service) error {
+// No error is returned as the operations are straightforward assignments.
+func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Application, ksvc *servingv1.Service) {
 	// Set the annotations for the Knative Service
 	if ksvc.Annotations == nil {
 		ksvc.Annotations = make(map[string]string)
@@ -287,11 +321,7 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 		enableTLS = *app.Spec.EnableTLS
 	}
 	ksvc.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-	httpProtocol := netv1alpha1.HTTPOptionEnabled
-	if enableTLS {
-		httpProtocol = netv1alpha1.HTTPOptionRedirected
-	}
-	ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(httpProtocol)
+	ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
 	// Default Scale values if nil
 	minReplicas := int32(0) // Default minReplicas
 	if app.Spec.Scale.MinReplicas != nil {
@@ -358,7 +388,6 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 	for k, v := range ksvc.Annotations { // Copy annotations from service meta
 		ksvc.Spec.Template.ObjectMeta.Annotations[k] = v
 	}
-	return nil
 }
 
 // reconcileDomainMapping handles the reconciliation of the DomainMapping for the Application.
@@ -366,12 +395,23 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 	ctx context.Context,
 	l logr.Logger,
 	app *workloadv1alpha1.Application,
-	ksvc *servingv1.Service,
-) error {
+	ksvc *servingv1.Service, // Knative Service must be ready or reconciled before this
+) (*servingv1beta1.DomainMapping, error) {
 	l = l.WithValues("resource", "DomainMapping")
 	if app.Spec.Domain == "" {
 		l.Info("Domain not specified in spec, ensuring any owned DomainMapping is deleted.")
-		return r.cleanupOwnedDomainMappings(ctx, l, app)
+		return nil, r.cleanupOwnedDomainMappings(ctx, l, app)
+	}
+	if ksvc == nil {
+		// Should not happen if reconcileResources calls this correctly, but defensive check
+		l.Info("Knative Service is nil, cannot reconcile DomainMapping yet.")
+		app.Status.SetCondition(metav1.Condition{
+			Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  workloadv1alpha1.KnativeServiceNotReadyReason,
+			Message: "Waiting for Knative Service before reconciling DomainMapping.",
+		})
+		return nil, fmt.Errorf("knative service is nil, cannot proceed with domain mapping reconciliation")
 	}
 
 	l = l.WithValues("domain", app.Spec.Domain)
@@ -391,7 +431,7 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 				Reason:  workloadv1alpha1.DomainMappingCheckFailedReason,
 				Message: fmt.Sprintf("Failed to check for existing DomainMapping: %v", err),
 			})
-			return fmt.Errorf("failed to check for existing DomainMapping %s: %w", app.Spec.Domain, err)
+			return nil, fmt.Errorf("failed to check for existing DomainMapping %s: %w", app.Spec.Domain, err)
 		}
 		// If err is NotFound, we can proceed to CreateOrUpdate below.
 	} else {
@@ -407,7 +447,7 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 				Reason:  workloadv1alpha1.DomainMappingConflictReason,
 				Message: conflictErr.Error(),
 			})
-			return conflictErr // Early return on conflict
+			return nil, conflictErr // Early return on conflict
 		}
 	}
 
@@ -419,9 +459,12 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 		},
 	}
 
-	err = r.reconcileOwnedResource(ctx, l, app, dm, func() error {
-		// Conflict check is now done *before* calling reconcileOwnedResource.
-		// This mutateFn only sets the desired state.
+	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, dm, func() error {
+		// Set the application label
+		if dm.Labels == nil {
+			dm.Labels = make(map[string]string)
+		}
+		dm.Labels[workloadv1alpha1.ApplicationLabel] = app.Name
 
 		// Set annotations for Domain Mapping
 		if dm.Annotations == nil {
@@ -432,11 +475,7 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 			enableTLS = *app.Spec.EnableTLS
 		}
 		dm.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-		httpProtocol := netv1alpha1.HTTPOptionEnabled
-		if enableTLS {
-			httpProtocol = netv1alpha1.HTTPOptionRedirected
-		}
-		dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(httpProtocol)
+		dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
 
 		// Set the reference to the Knative Service
 		dm.Spec.Ref = duckv1.KReference{
@@ -445,28 +484,33 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 			Namespace:  ksvc.Namespace, // Use namespace from the ready ksvc
 			Name:       ksvc.Name,      // Use name from the ready ksvc
 		}
-		return nil
+
+		// Set the controller reference
+		return controllerutil.SetControllerReference(app, dm, r.Scheme)
 	})
 
 	if err != nil {
-		// Error from reconcileOwnedResource (CreateOrUpdate)
+		// Error from CreateOrUpdate
 		app.Status.SetCondition(metav1.Condition{
 			Type:    workloadv1alpha1.DomainMappingReadyConditionType,
 			Status:  metav1.ConditionFalse,
 			Reason:  workloadv1alpha1.DomainMappingCreationFailedReason,
 			Message: fmt.Sprintf("Failed to reconcile DomainMapping: %v", err),
 		})
-		return err // Return the wrapped error from reconcileOwnedResource
+		return nil, fmt.Errorf("failed to reconcile DomainMapping %s: %w", dm.Name, err)
+	}
+	if opResult != controllerutil.OperationResultNone {
+		l.Info("DomainMapping reconciled", "operation", opResult)
 	}
 
-	// Success
+	// Success - Update status (consider checking DM readiness if needed, but for now assume success)
 	app.Status.SetCondition(metav1.Condition{
 		Type:    workloadv1alpha1.DomainMappingReadyConditionType,
 		Status:  metav1.ConditionTrue,
 		Reason:  workloadv1alpha1.DomainMappingReadyReason,
 		Message: fmt.Sprintf("DomainMapping %s created/updated", dm.Name),
 	})
-	return nil
+	return dm, nil
 }
 
 // cleanupOwnedDomainMappings deletes any DomainMapping resources owned by the Application.
@@ -513,100 +557,6 @@ func (r *ApplicationReconciler) cleanupOwnedDomainMappings(
 	// If there were errors deleting DomainMappings, return an aggregated error
 	if len(deleteErrors) > 0 {
 		return kerrors.NewAggregate(deleteErrors)
-	}
-	return nil
-}
-
-// reconcileOwnedResource handles the Create/Update logic for an owned resource.
-func (r *ApplicationReconciler) reconcileOwnedResource(
-	ctx context.Context,
-	l logr.Logger,
-	owner *workloadv1alpha1.Application,
-	obj client.Object, // The object to reconcile (e.g., Knative Service, DomainMapping)
-	mutateFn func() error,
-) error {
-	key := client.ObjectKeyFromObject(obj)
-	resourceKind := obj.GetObjectKind().GroupVersionKind().Kind
-	l = l.WithValues("resource", resourceKind, "name", key.Name, "namespace", key.Namespace)
-
-	// Attempt to get the existing resource
-	err := r.Get(ctx, key, obj)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			// --- Create Resource ---
-			l.Info("Resource not found, creating.")
-			// Apply mutations before creation
-			if err := r.applyMutations(owner, obj, mutateFn); err != nil {
-				l.Error(err, "Failed to apply mutations before creation")
-				return err // Return mutation error
-			}
-			if err := r.Create(ctx, obj); err != nil {
-				l.Error(err, "Failed to create resource")
-				// Wrap error for context
-				return fmt.Errorf("failed to create %s %s: %w", resourceKind, key, err)
-			}
-			l.Info("Resource created successfully")
-			return nil // Creation successful
-		}
-		// Other Get error
-		l.Error(err, "Failed to get resource")
-		return fmt.Errorf("failed to get %s %s: %w", resourceKind, key, err)
-	}
-
-	// --- Update Resource ---
-	existing := obj.DeepCopyObject().(client.Object) // Keep a copy of the current state
-
-	// Apply mutations to the object fetched by Get
-	if err := r.applyMutations(owner, obj, mutateFn); err != nil {
-		l.Error(err, "Failed to apply mutations before update")
-		return err // Return mutation error
-	}
-
-	// Check if the mutation resulted in any changes
-	if equality.Semantic.DeepEqual(existing, obj) {
-		l.V(1).Info("No changes detected, skipping update.")
-		return nil // No update needed
-	}
-
-	l.Info("Resource differs, attempting update.")
-	if err := r.Update(ctx, obj); err != nil {
-		if apierrors.IsConflict(err) {
-			l.Info("Conflict detected during update, requeueing.")
-			// Return the conflict error directly, controller-runtime will handle requeue
-			return err
-		}
-		l.Error(err, "Failed to update resource")
-		// Wrap error for context
-		return fmt.Errorf("failed to update %s %s: %w", resourceKind, key, err)
-	}
-
-	l.Info("Resource updated successfully")
-	return nil // Update successful
-}
-
-// applyMutations applies common and specific mutations to the object.
-// Helper function extracted from the original CreateOrUpdate logic.
-func (r *ApplicationReconciler) applyMutations(
-	owner *workloadv1alpha1.Application,
-	obj client.Object,
-	mutateFn func() error,
-) error {
-	// Apply common mutations: Label and Owner Reference
-	if obj.GetLabels() == nil {
-		obj.SetLabels(make(map[string]string))
-	}
-	obj.GetLabels()[workloadv1alpha1.ApplicationLabel] = owner.Name // Use ApplicationLabel
-
-	if err := controllerutil.SetControllerReference(owner, obj, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set controller reference: %w", err)
-	}
-
-	// Apply resource-specific mutations
-	if mutateFn != nil {
-		if err := mutateFn(); err != nil {
-			// Wrap mutation error for better context
-			return fmt.Errorf("mutation function failed: %w", err)
-		}
 	}
 	return nil
 }
@@ -696,15 +646,9 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Owns Knative Service - Reconcile Application if owned Service changes
 		// We also need to trigger reconcile if the *status* of the owned service changes (specifically Ready condition)
 		// This requires watching the Service directly and enqueuing requests for the owner.
-		Watches(
+		Owns(
 			&servingv1.Service{},
-			handler.EnqueueRequestForOwner(
-				mgr.GetScheme(),
-				mgr.GetRESTMapper(),
-				&workloadv1alpha1.Application{},
-				handler.OnlyControllerOwner(),
-			),
-			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}, applicationLabelPredicate), // Trigger on status changes too
+			builder.WithPredicates(applicationLabelPredicate), // Trigger on status changes too
 		).
 		// Owns DomainMapping - Reconcile Application if owned DomainMapping changes
 		Owns(&servingv1beta1.DomainMapping{}, builder.WithPredicates(applicationLabelPredicate)). // Watch DomainMapping too
