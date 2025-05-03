@@ -376,6 +376,7 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 			Command:        app.Spec.Command,
 			Args:           app.Spec.Args,
 			StartupProbe:   app.Spec.StartupProbe,
+			Ports:          app.Spec.Ports,
 		},
 	}
 	// Ensure labels and annotations from the service are propagated to the template

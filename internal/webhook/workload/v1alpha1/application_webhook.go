@@ -22,6 +22,7 @@ import (
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -92,6 +93,9 @@ func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj runtime.Ob
 	if application.Spec.Scale.MaxReplicas == nil {
 		application.Spec.Scale.MaxReplicas = ptr.To(workloadv1alpha1.DefaultMaxReplicas)
 	}
+	if application.Spec.Ports == nil {
+		application.Spec.Ports = []corev1.ContainerPort{{ContainerPort: 80}}
+	}
 	return nil
 }
 
@@ -133,6 +137,10 @@ func (v *ApplicationCustomValidator) validate(ctx context.Context, application *
 	}
 	if *application.Spec.Scale.MinReplicas > *application.Spec.Scale.MaxReplicas {
 		errs = append(errs, field.Invalid(field.NewPath("spec", "scale", "minReplicas"), application.Spec.Scale.MinReplicas, "minReplicas must be less than or equal to maxReplicas"))
+	}
+	if application.Spec.Ports == nil {
+		errs = append(errs, field.Required(field.NewPath("spec").Child("ports"),
+			"ports is required"))
 	}
 	return errs
 }
