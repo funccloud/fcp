@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -60,7 +61,11 @@ var _ = Describe("Application Controller", func() {
 					Namespace: AppNamespace,
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: AppImage,
+					Containers: []corev1.Container{
+						{
+							Image: AppImage,
+						},
+					},
 					Scale: workloadv1alpha1.Scale{ // Removed pointer
 						MinReplicas: ptr.To[int32](1),
 						MaxReplicas: ptr.To[int32](1),
@@ -153,7 +158,11 @@ var _ = Describe("Application Controller", func() {
 					Namespace: AppNamespace,
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image:  AppImage,
+					Containers: []corev1.Container{
+						{
+							Image: AppImage,
+						},
+					},
 					Domain: AppDomain,
 					Scale: workloadv1alpha1.Scale{ // Removed pointer
 						MinReplicas: ptr.To[int32](1),
@@ -234,7 +243,11 @@ var _ = Describe("Application Controller", func() {
 					Namespace: AppNamespace,
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: AppImage,
+					Containers: []corev1.Container{
+						{
+							Image: AppImage,
+						},
+					},
 					Scale: workloadv1alpha1.Scale{ // Removed pointer
 						MinReplicas: ptr.To[int32](1),
 						MaxReplicas: ptr.To[int32](1),
@@ -309,7 +322,11 @@ var _ = Describe("Application Controller", func() {
 					Namespace: AppNamespace,
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: AppImage,
+					Containers: []corev1.Container{
+						{
+							Image: AppImage,
+						},
+					},
 					Scale: workloadv1alpha1.Scale{ // Removed pointer
 						MinReplicas:                 ptr.To[int32](2),
 						MaxReplicas:                 ptr.To[int32](5),

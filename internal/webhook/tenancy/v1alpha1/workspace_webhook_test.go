@@ -447,7 +447,12 @@ var _ = Describe("Workspace Webhook", func() {
 					},
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: "test-image",
+					Containers: []corev1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
 					Scale: workloadv1alpha1.Scale{
 						MinReplicas: ptr.To[int32](0),
 						MaxReplicas: ptr.To[int32](1),

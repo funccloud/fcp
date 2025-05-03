@@ -235,6 +235,12 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 			Reason:  workloadv1alpha1.KnativeServiceCreationFailedReason,
 			Message: fmt.Sprintf("Failed to reconcile Knative Service: %v", err),
 		})
+		app.Status.SetCondition(metav1.Condition{
+			Type:    workloadv1alpha1.ReadyConditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  workloadv1alpha1.KnativeServiceCreationFailedReason,
+			Message: err.Error(),
+		})
 		return nil, false, fmt.Errorf("failed to reconcile Knative Service: %w", err)
 	}
 	if opResult != controllerutil.OperationResultNone {
@@ -347,20 +353,7 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 
 	// Configure the template spec
 	ksvc.Spec.Template.Spec.ImagePullSecrets = app.Spec.ImagePullSecrets
-	ksvc.Spec.Template.Spec.Containers = []corev1.Container{
-		{
-			Image:          app.Spec.Image,
-			Env:            app.Spec.Env,
-			Resources:      app.Spec.Resources,
-			EnvFrom:        app.Spec.EnvFrom,
-			LivenessProbe:  app.Spec.LivenessProbe,
-			ReadinessProbe: app.Spec.ReadinessProbe,
-			Command:        app.Spec.Command,
-			Args:           app.Spec.Args,
-			StartupProbe:   app.Spec.StartupProbe,
-			Ports:          app.Spec.Ports,
-		},
-	}
+	ksvc.Spec.Template.Spec.Containers = app.Spec.Containers
 	// Ensure labels and annotations from the service are propagated to the template
 	if ksvc.Spec.Template.ObjectMeta.Labels == nil {
 		ksvc.Spec.Template.ObjectMeta.Labels = make(map[string]string)
@@ -425,7 +418,7 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 				existingDM.Name, existingAppLabel)
 			l.Error(conflictErr, "DomainMapping conflict detected")
 			app.Status.SetCondition(metav1.Condition{
-				Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+				Type:    workloadv1alpha1.ReadyConditionType,
 				Status:  metav1.ConditionFalse,
 				Reason:  workloadv1alpha1.DomainMappingConflictReason,
 				Message: conflictErr.Error(),
@@ -475,10 +468,10 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 	if err != nil {
 		// Error from CreateOrUpdate
 		app.Status.SetCondition(metav1.Condition{
-			Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+			Type:    workloadv1alpha1.ReadyConditionType,
 			Status:  metav1.ConditionFalse,
 			Reason:  workloadv1alpha1.DomainMappingCreationFailedReason,
-			Message: fmt.Sprintf("Failed to reconcile DomainMapping: %v", err),
+			Message: err.Error(),
 		})
 		return nil, fmt.Errorf("failed to reconcile DomainMapping %s: %w", dm.Name, err)
 	}

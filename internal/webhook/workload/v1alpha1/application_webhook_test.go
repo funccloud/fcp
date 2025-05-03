@@ -184,7 +184,11 @@ var _ = Describe("Application Webhook", func() {
 					Namespace: "nonexistent-ws",
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: "nginx:latest",
+					Containers: []corev1.Container{
+						{
+							Image: "nginx:latest",
+						},
+					},
 				},
 			}
 			err := k8sClient.Create(ctx, app)
@@ -215,7 +219,11 @@ var _ = Describe("Application Webhook", func() {
 					Namespace:    "valid-ws",
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: "nginx:latest",
+					Containers: []corev1.Container{
+						{
+							Image: "nginx:latest",
+						},
+					},
 					Scale: workloadv1alpha1.Scale{ // Add scale spec
 						MinReplicas: ptr.To[int32](1),
 						MaxReplicas: ptr.To[int32](1),
@@ -253,7 +261,11 @@ var _ = Describe("Application Webhook", func() {
 					Namespace: "nonexistent-ws",
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: "nginx:latest",
+					Containers: []corev1.Container{
+						{
+							Image: "nginx:latest",
+						},
+					},
 				},
 			}
 			err := k8sClient.Create(ctx, app)
@@ -286,7 +298,11 @@ var _ = Describe("Application Webhook", func() {
 					Namespace:    "valid-ws",
 				},
 				Spec: workloadv1alpha1.ApplicationSpec{
-					Image: "nginx:latest",
+					Containers: []corev1.Container{
+						{
+							Image: "nginx:latest",
+						},
+					},
 					Scale: workloadv1alpha1.Scale{ // Add scale spec
 						MinReplicas: ptr.To[int32](1),
 						MaxReplicas: ptr.To[int32](1),

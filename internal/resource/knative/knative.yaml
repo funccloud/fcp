@@ -13,6 +13,8 @@ spec:
       https-port: 31443
       {{ end }}
   config:
+    features:
+      multi-container: "enabled"
     autoscaler:
       enable-scale-to-zero: "true"
       allow-zero-initial-scale: "true"

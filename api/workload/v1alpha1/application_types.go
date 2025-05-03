@@ -66,27 +66,11 @@ func (m Metric) GetClass() string {
 
 // ApplicationSpec defines the desired state of Application.
 type ApplicationSpec struct {
-	// Image is the image of the application
+	// Containers is the list of containers of the application
+	Containers []corev1.Container `json:"containers,omitempty"`
 	// +kubebuilder:validation:Required
-	Image string `json:"image,omitempty"`
 	// Scale is the scale of the application
 	Scale Scale `json:"scale,omitempty"`
-	// Resources is the resources of the application
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
-	// Env is the environment variables of the application
-	Env []corev1.EnvVar `json:"env,omitempty"`
-	// EnvFrom is the environment variables from the secret of the application
-	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
-	// Command is the command of the application
-	Command []string `json:"command,omitempty"`
-	// Args is the arguments of the application
-	Args []string `json:"args,omitempty"`
-	// LivenessProbe is the liveness probe of the application
-	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
-	// ReadinessProbe is the readiness probe of the application
-	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
-	// StartupProbe is the startup probe of the application
-	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
 	// ImagePullSecrets is the image pull secrets of the application
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 	// RolloutDuration is the rollout duration of the application
@@ -97,8 +81,6 @@ type ApplicationSpec struct {
 	EnableTLS *bool `json:"enableTLS,omitempty"`
 	// Domain is the custom domain of the application
 	Domain string `json:"domain,omitempty"`
-	// Ports is the ports of the application
-	Ports []corev1.ContainerPort `json:"ports,omitempty"`
 }
 
 type Scale struct {
