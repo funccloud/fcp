@@ -10,11 +10,14 @@ spec:
   domain: gateway.127.0.0.1.sslip.io
   enableTLS: false
   image: kong:latest
+  ports:
+    - containerPort: 8000
+    - containerPort: 8002 
   env:
     - name: KONG_DATABASE
       value: "off"
     - name: KONG_PROXY_LISTEN
-      value: "0.0.0.0:8080"
+      value: "0.0.0.0:8000"
     - name: KONG_ADMIN_LISTEN
       value: "0.0.0.0:8001"
     - name: KONG_ADMIN_GUI_LISTEN
