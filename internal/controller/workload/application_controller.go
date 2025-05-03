@@ -273,7 +273,7 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		if len(conds) > 0 {
 			latestCond := conds[len(conds)-1]
 			cond := metav1.Condition{
-				Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
+				Type:    workloadv1alpha1.ReadyConditionType,
 				Status:  metav1.ConditionFalse,
 				Reason:  workloadv1alpha1.KnativeServiceNotReadyReason,
 				Message: latestCond.Message,
