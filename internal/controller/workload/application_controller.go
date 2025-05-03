@@ -137,13 +137,6 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	if requeueNeeded {
 		l.Info("Requeueing reconciliation as Knative Service is not ready yet.")
-		// Set Ready condition to False while waiting
-		app.Status.SetCondition(metav1.Condition{
-			Type:    workloadv1alpha1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  workloadv1alpha1.KnativeServiceNotReadyReason, // Use specific reason
-			Message: "Waiting for Knative Service to become ready",
-		})
 		// Don't update ObservedGeneration yet
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil // Requeue requested by reconcileResources
 	}
@@ -275,33 +268,21 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		})
 		return nil, false, fmt.Errorf("failed to get Knative Service status %s: %w", ksvc.Name, err)
 	}
-
+	latestCond := latestKsvc.Status.GetConditions()[len(latestKsvc.Status.GetConditions())-1]
+	cond := metav1.Condition{
+		Type:    string(latestCond.Type),
+		Status:  metav1.ConditionStatus(latestCond.Status),
+		Reason:  latestCond.Reason,
+		Message: latestCond.Message,
+	}
+	app.Status.SetCondition(cond)
 	ksvcReadyCond := latestKsvc.Status.GetCondition(servingv1.ServiceConditionReady)
 	if ksvcReadyCond == nil || ksvcReadyCond.Status != corev1.ConditionTrue {
 		l.Info("Knative Service is not ready yet, requeueing.", "service", ksvc.Name)
-		reason := workloadv1alpha1.KnativeServiceNotReadyReason
-		message := "Knative Service is not yet ready."
-		if ksvcReadyCond != nil {
-			reason = ksvcReadyCond.Reason
-			message = ksvcReadyCond.Message
-		}
-		app.Status.SetCondition(metav1.Condition{
-			Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  reason,
-			Message: message,
-		})
 		return latestKsvc, true, nil // Requeue needed, return the latest ksvc
 	}
-
 	// Knative Service is Ready
 	l.Info("Knative Service is Ready", "service", ksvc.Name)
-	app.Status.SetCondition(metav1.Condition{
-		Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
-		Status:  metav1.ConditionTrue,
-		Reason:  workloadv1alpha1.KnativeServiceReadyReason,
-		Message: fmt.Sprintf("Knative Service %s is ready", ksvc.Name),
-	})
 	return latestKsvc, false, nil // Return the ready ksvc, no requeue, no error
 }
 
