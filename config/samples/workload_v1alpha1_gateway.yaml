@@ -12,7 +12,6 @@ spec:
   image: kong:latest
   ports:
     - containerPort: 8000
-    - containerPort: 8002 
   env:
     - name: KONG_DATABASE
       value: "off"
