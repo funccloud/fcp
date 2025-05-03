@@ -97,7 +97,7 @@ type ApplicationSpec struct {
 	EnableTLS *bool `json:"enableTLS,omitempty"`
 	// Domain is the custom domain of the application
 	Domain string `json:"domain,omitempty"`
-	//Ports is the ports of the application
+	// Ports is the ports of the application
 	Ports []corev1.ContainerPort `json:"ports,omitempty"`
 }
 
