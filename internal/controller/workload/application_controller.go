@@ -125,13 +125,10 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Reconcile the application resources (e.g., Knative Service, DomainMapping)
 	requeueNeeded, reconcileErr := r.reconcileResources(ctx, l, app)
 	if reconcileErr != nil {
-		// Use embedded Status struct's SetCondition method
-		app.Status.SetCondition(metav1.Condition{
-			Type:    workloadv1alpha1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  workloadv1alpha1.ReconciliationFailedReason,
-			Message: fmt.Sprintf("Failed to reconcile resources: %v", reconcileErr),
-		})
+		if apierrors.IsConflict(reconcileErr) {
+			l.Info("Conflict during reconciliation, requeueing.", "application", req.NamespacedName)
+			return ctrl.Result{Requeue: true}, nil // Requeue on conflict
+		}
 		// Return error to requeue, even if requeueNeeded is true, error takes precedence
 		return ctrl.Result{}, reconcileErr
 	}
@@ -276,7 +273,7 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		if len(conds) > 0 {
 			latestCond := conds[len(conds)-1]
 			cond := metav1.Condition{
-				Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
+				Type:    workloadv1alpha1.ReadyConditionType,
 				Status:  metav1.ConditionFalse,
 				Reason:  workloadv1alpha1.KnativeServiceNotReadyReason,
 				Message: latestCond.Message,
