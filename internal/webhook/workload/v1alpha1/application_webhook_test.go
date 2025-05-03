@@ -173,7 +173,7 @@ var _ = Describe("Application Webhook", func() {
 			err := k8sClient.Create(ctx, app)
 			Expect(err).To(HaveOccurred())
 			// Check only for the image required field error, as validation might stop early
-			Expect(err.Error()).To(ContainSubstring("spec.image: Required value"))
+			Expect(err.Error()).To(ContainSubstring("spec.containers: Required value: at least one container is required"))
 		})
 
 		It("should deny creation if namespace (workspace) does not exist", func() {
@@ -187,6 +187,11 @@ var _ = Describe("Application Webhook", func() {
 					Containers: []corev1.Container{
 						{
 							Image: "nginx:latest",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 				},
@@ -222,6 +227,11 @@ var _ = Describe("Application Webhook", func() {
 					Containers: []corev1.Container{
 						{
 							Image: "nginx:latest",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 					Scale: workloadv1alpha1.Scale{ // Add scale spec
@@ -251,7 +261,7 @@ var _ = Describe("Application Webhook", func() {
 			err := k8sClient.Create(ctx, app)
 			Expect(err).To(HaveOccurred())
 			// Check only for the image required field error, as validation might stop early
-			Expect(err.Error()).To(ContainSubstring("spec.image: Required value"))
+			Expect(err.Error()).To(ContainSubstring("spec.containers: Required value: at least one container is required"))
 		})
 
 		It("should deny creation if namespace (workspace) does not exist", func() {
@@ -264,6 +274,11 @@ var _ = Describe("Application Webhook", func() {
 					Containers: []corev1.Container{
 						{
 							Image: "nginx:latest",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 				},
@@ -301,6 +316,11 @@ var _ = Describe("Application Webhook", func() {
 					Containers: []corev1.Container{
 						{
 							Image: "nginx:latest",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 					Scale: workloadv1alpha1.Scale{ // Add scale spec

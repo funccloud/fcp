@@ -451,6 +451,11 @@ var _ = Describe("Workspace Webhook", func() {
 						{
 							Name:  "test-container",
 							Image: "test-image",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+							},
 						},
 					},
 					Scale: workloadv1alpha1.Scale{
