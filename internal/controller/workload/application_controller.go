@@ -268,20 +268,21 @@ func (r *ApplicationReconciler) reconcileKnativeService(
 		})
 		return nil, false, fmt.Errorf("failed to get Knative Service status %s: %w", ksvc.Name, err)
 	}
-	conds := latestKsvc.Status.GetConditions()
-	if len(conds) > 0 {
-		latestCond := conds[len(conds)-1]
-		cond := metav1.Condition{
-			Type:    string(latestCond.Type),
-			Status:  metav1.ConditionStatus(latestCond.Status),
-			Reason:  latestCond.Reason,
-			Message: latestCond.Message,
-		}
-		app.Status.SetCondition(cond)
-	}
+
 	ksvcReadyCond := latestKsvc.Status.GetCondition(servingv1.ServiceConditionReady)
 	if ksvcReadyCond == nil || ksvcReadyCond.Status != corev1.ConditionTrue {
 		l.Info("Knative Service is not ready yet, requeueing.", "service", ksvc.Name)
+		conds := latestKsvc.Status.GetConditions()
+		if len(conds) > 0 {
+			latestCond := conds[len(conds)-1]
+			cond := metav1.Condition{
+				Type:    workloadv1alpha1.KnativeServiceReadyConditionType,
+				Status:  metav1.ConditionFalse,
+				Reason:  workloadv1alpha1.KnativeServiceNotReadyReason,
+				Message: latestCond.Message,
+			}
+			app.Status.SetCondition(cond)
+		}
 		return latestKsvc, true, nil // Requeue needed, return the latest ksvc
 	}
 	// Knative Service is Ready
