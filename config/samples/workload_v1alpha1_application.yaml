@@ -1,0 +1,17 @@
+apiVersion: workload.fcp.funccloud.com/v1alpha1
+kind: Application
+metadata:
+  labels:
+    app.kubernetes.io/name: fcp
+    app.kubernetes.io/managed-by: kustomize
+  name: e2e
+  namespace: e2e
+spec:
+  domain: 127.0.0.1.sslip.io
+  enableTLS: false
+  image: ghcr.io/knative/helloworld-go:latest
+  ports:
+    - containerPort: 8080
+  env:
+    - name: TARGET
+      value: "Go Sample v1"

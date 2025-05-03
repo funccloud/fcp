@@ -71,27 +71,32 @@ spec:
           capabilities:
             drop:
             - "ALL"
+        startupProbe:          # Add startupProbe
+          httpGet:
+            path: /healthz     # Use healthz endpoint for startup check
+            port: 8081
+          initialDelaySeconds: 150 
+          periodSeconds: 10      
+          failureThreshold: 5   
         livenessProbe:
           httpGet:
             path: /healthz
             port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
+          periodSeconds: 10      
         readinessProbe:
           httpGet:
             path: /readyz
             port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
+          periodSeconds: 10      # Keep periodSeconds at 10
         # TODO(user): Configure the resources accordingly based on the project requirements.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:
             cpu: 500m
-            memory: 128Mi
+            memory: 256Mi
           requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 128Mi
         volumeMounts: []
       volumes: []
       serviceAccountName: controller-manager

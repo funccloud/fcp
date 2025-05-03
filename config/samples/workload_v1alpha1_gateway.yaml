@@ -1,0 +1,24 @@
+apiVersion: workload.fcp.funccloud.com/v1alpha1
+kind: Application
+metadata:
+  labels:
+    app.kubernetes.io/name: fcp
+    app.kubernetes.io/managed-by: kustomize
+  name: gateway
+  namespace: e2e
+spec:
+  domain: gateway.127.0.0.1.sslip.io
+  enableTLS: false
+  image: kong:latest
+  ports:
+    - containerPort: 8000
+  env:
+    - name: KONG_DATABASE
+      value: "off"
+    - name: KONG_PROXY_LISTEN
+      value: "0.0.0.0:8000"
+    - name: KONG_ADMIN_LISTEN
+      value: "0.0.0.0:8001"
+    - name: KONG_ADMIN_GUI_LISTEN
+      value: "0.0.0.0:8002"
+  

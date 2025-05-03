@@ -1,0 +1,31 @@
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  ingress:
+    kourier:
+      enabled: true
+      {{ if .IsKind}}
+      service-type: NodePort
+      http-port: 31080
+      https-port: 31443
+      {{ end }}
+  config:
+    autoscaler:
+      enable-scale-to-zero: "true"
+      allow-zero-initial-scale: "true"
+      scale-to-zero-grace-period: 30s
+    domain:
+      "{{ .Domain }}": ""
+    certmanager:
+      issuerRef: |
+        name: {{ .IssuerName }}
+        kind: ClusterIssuer
+    network:
+      ingress-class: "kourier.ingress.networking.knative.dev"
+      certificate-class: "cert-manager.certificate.networking.knative.dev"
+      autocreate-cluster-domain-claims: "true"
+      external-domain-tls: Enabled
+      http-protocol: Redirected

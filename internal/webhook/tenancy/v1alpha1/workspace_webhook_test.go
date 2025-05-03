@@ -17,12 +17,17 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt" // Add fmt import
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const workspaceKind = "Workspace"
@@ -38,6 +43,7 @@ var _ = Describe("Workspace Webhook", func() {
 	)
 
 	BeforeEach(func() {
+		validator.Client = k8sClient
 		obj = &tenancyv1alpha1.Workspace{}
 		oldObj = &tenancyv1alpha1.Workspace{}
 		validator = WorkspaceCustomValidator{}
@@ -46,11 +52,9 @@ var _ = Describe("Workspace Webhook", func() {
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
 	})
 
 	Context("When creating Workspace under Defaulting Webhook", func() {
@@ -94,7 +98,7 @@ var _ = Describe("Workspace Webhook", func() {
 					Owners: []corev1.ObjectReference{{
 						Kind: "User",
 						Name: userName,
-					}}, // Already unique
+					}},
 				},
 			}
 			err := defaulter.Default(ctx, obj)
@@ -175,7 +179,6 @@ var _ = Describe("Workspace Webhook", func() {
 			// Setup old object for comparison
 			oldObj = &tenancyv1alpha1.Workspace{
 				ObjectMeta: metav1.ObjectMeta{
-					// Name: workspaceName, // Use userName to match the owner for personal type validity
 					Name: userName,
 				},
 				TypeMeta: metav1.TypeMeta{
@@ -190,15 +193,12 @@ var _ = Describe("Workspace Webhook", func() {
 					}},
 				},
 			}
-			// Create a copy for the new object to modify
 			obj = oldObj.DeepCopy()
-
 			By("simulating an immutable field update (type)")
-			// Temporarily set a different name for the type change test to avoid conflict with owner name rule
 			obj.Name = workspaceName
 			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
-			obj.Name = userName // Reset name
+			obj.Name = userName
 
 			By("simulating an immutable field update (owners for personal type)")
 			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal // Reset type
@@ -206,15 +206,11 @@ var _ = Describe("Workspace Webhook", func() {
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
 
 			By("simulating a valid update (no immutable fields changed for personal)")
-			obj.Spec.Owners = oldObj.Spec.Owners         // Reset owners
-			obj.Labels = map[string]string{"foo": "bar"} // Change a mutable field
-			// Now oldObj and obj represent a valid personal workspace state (name == owner name)
-			// before the mutable label change, so the update should be allowed.
+			obj.Spec.Owners = oldObj.Spec.Owners
+			obj.Labels = map[string]string{"foo": "bar"}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
 
 			By("simulating a valid update for organization type (changing owners)")
-			// Change type in both old and new for this test scenario
-			// Ensure oldObj name doesn't conflict with owner rule if it were personal
 			oldObj.Name = workspaceName
 			oldObj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
 			obj = oldObj.DeepCopy()
@@ -272,7 +268,6 @@ var _ = Describe("Workspace Webhook", func() {
 		})
 
 		It("Should validate updates correctly", func() {
-			// Setup old object for comparison
 			oldObj = &tenancyv1alpha1.Workspace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: workspaceName,
@@ -289,7 +284,6 @@ var _ = Describe("Workspace Webhook", func() {
 					}},
 				},
 			}
-			// Create a copy for the new object to modify
 			obj = oldObj.DeepCopy()
 
 			By("simulating an immutable field update (type)")
@@ -316,10 +310,8 @@ var _ = Describe("Workspace Webhook", func() {
 		})
 
 		It("Should validate updates correctly", func() {
-			// Setup old object for comparison
 			oldObj = &tenancyv1alpha1.Workspace{
 				ObjectMeta: metav1.ObjectMeta{
-					// Name: workspaceName, // Use userName to match the owner for personal type validity
 					Name: userName,
 				},
 				TypeMeta: metav1.TypeMeta{
@@ -334,15 +326,13 @@ var _ = Describe("Workspace Webhook", func() {
 					}},
 				},
 			}
-			// Create a copy for the new object to modify
 			obj = oldObj.DeepCopy()
 
 			By("simulating an immutable field update (type)")
-			// Temporarily set a different name for the type change test to avoid conflict with owner name rule
 			obj.Name = workspaceName
 			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
-			obj.Name = userName // Reset name
+			obj.Name = userName
 
 			By("simulating an immutable field update (owners for personal type)")
 			obj.Spec.Type = tenancyv1alpha1.WorkspaceTypePersonal // Reset type
@@ -350,15 +340,11 @@ var _ = Describe("Workspace Webhook", func() {
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
 
 			By("simulating a valid update (no immutable fields changed for personal)")
-			obj.Spec.Owners = oldObj.Spec.Owners         // Reset owners
-			obj.Labels = map[string]string{"foo": "bar"} // Change a mutable field
-			// Now oldObj and obj represent a valid personal workspace state (name == owner name)
-			// before the mutable label change, so the update should be allowed.
+			obj.Spec.Owners = oldObj.Spec.Owners
+			obj.Labels = map[string]string{"foo": "bar"}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
 
 			By("simulating a valid update for organization type (changing owners)")
-			// Change type in both old and new for this test scenario
-			// Ensure oldObj name doesn't conflict with owner rule if it were personal
 			oldObj.Name = workspaceName
 			oldObj.Spec.Type = tenancyv1alpha1.WorkspaceTypeOrganization
 			obj = oldObj.DeepCopy()
@@ -367,6 +353,133 @@ var _ = Describe("Workspace Webhook", func() {
 				Name: "new-test-group",
 			}}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
+	})
+
+	Context("When deleting Workspace under Validating Webhook", func() {
+		var testNamespace *corev1.Namespace
+		BeforeEach(func() {
+			testNamespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: workspaceName + "-"},
+			}
+			Expect(k8sClient.Create(ctx, testNamespace)).Should(Succeed())
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(testNamespace), testNamespace)).Should(Succeed())
+
+			ws := &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testNamespace.Name,
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypeOrganization,
+					Owners: []corev1.ObjectReference{{
+						Kind: "User",
+						Name: "test-deleter",
+					}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, ws)).Should(Succeed())
+
+			validator = WorkspaceCustomValidator{Client: k8sClient}
+			Expect(validator.Client).NotTo(BeNil(), "Validator client should be initialized")
+			obj = &tenancyv1alpha1.Workspace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceName,
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       workspaceKind,
+					APIVersion: tenancyv1alpha1.GroupVersion.String(),
+				},
+				Spec: tenancyv1alpha1.WorkspaceSpec{
+					Type: tenancyv1alpha1.WorkspaceTypeOrganization,
+					Owners: []corev1.ObjectReference{{
+						Kind: "Group",
+						Name: "test-group",
+					}},
+				},
+			}
+		})
+
+		AfterEach(func() {
+			appList := &workloadv1alpha1.ApplicationList{}
+			listOpts := []client.ListOption{
+				client.InNamespace(testNamespace.Name),
+			}
+			err := k8sClient.List(ctx, appList, listOpts...)
+			if err == nil {
+				for i := range appList.Items {
+					app := appList.Items[i]
+					By(fmt.Sprintf("Deleting application %s/%s", app.Namespace, app.Name))
+					deleteErr := k8sClient.Delete(ctx, &app)
+					if deleteErr != nil && !apierrors.IsNotFound(deleteErr) {
+						Fail(fmt.Sprintf("Failed to start deletion of application %s/%s: %v", app.Namespace, app.Name, deleteErr))
+					}
+
+					By(fmt.Sprintf("Waiting for application %s/%s to be deleted", app.Namespace, app.Name))
+					Eventually(func() error {
+						tempApp := &workloadv1alpha1.Application{}
+						getErr := k8sClient.Get(ctx, client.ObjectKey{Namespace: app.Namespace, Name: app.Name}, tempApp)
+						return getErr
+					}, "30s", "250ms").Should(Satisfy(apierrors.IsNotFound), fmt.Sprintf("Application %s/%s should be deleted", app.Namespace, app.Name))
+				}
+			} else if !apierrors.IsNotFound(err) {
+				_, ierr := fmt.Fprintf(GinkgoWriter, "Warning: Failed to list applications in namespace %s during cleanup: %v\\n", testNamespace.Name, err)
+				Expect(ierr).NotTo(HaveOccurred(), "Failed to list applications in test namespace")
+			}
+
+			if testNamespace != nil && testNamespace.Name != "" {
+				By(fmt.Sprintf("Deleting test namespace %s", testNamespace.Name))
+				deleteErr := k8sClient.Delete(ctx, testNamespace)
+				if deleteErr != nil && !apierrors.IsNotFound(deleteErr) {
+					Fail(fmt.Sprintf("Failed to start deletion of namespace %s: %v", testNamespace.Name, deleteErr))
+				}
+			}
+		})
+
+		It("Should deny deletion if associated Applications exist", func() {
+			By("creating an associated Application")
+			app := &workloadv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-app",
+					Namespace: testNamespace.Name,
+					// Add the label that ValidateDelete checks for
+					Labels: map[string]string{
+						tenancyv1alpha1.WorkspaceLinkedResourceLabel: testNamespace.Name,
+					},
+				},
+				Spec: workloadv1alpha1.ApplicationSpec{
+					Image: "test-image",
+					Scale: workloadv1alpha1.Scale{
+						MinReplicas: ptr.To[int32](0),
+						MaxReplicas: ptr.To[int32](1),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).Should(Succeed())
+
+			// Ensure the application is findable by label before validating deletion
+			Eventually(func() error {
+				appList := &workloadv1alpha1.ApplicationList{}
+				return k8sClient.List(ctx, appList, client.MatchingLabels{
+					tenancyv1alpha1.WorkspaceLinkedResourceLabel: testNamespace.Name,
+				}, client.Limit(1))
+			}, "5s", "250ms").Should(Succeed(), "Application should be listable by label")
+
+			By("validating workspace deletion")
+			// Use the workspace object created in BeforeEach, ensuring its name matches the namespace
+			obj.Name = testNamespace.Name
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("workspace cannot be deleted because it contains 1 application(s)"))
+		})
+
+		It("Should allow deletion if no associated Applications exist", func() {
+			By("ensuring no associated Applications exist")
+			// (No application created in this test's scope)
+			By("validating workspace deletion")
+			// Use the workspace object created in BeforeEach, ensuring its name matches the namespace
+			obj.Name = testNamespace.Name
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 

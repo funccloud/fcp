@@ -22,11 +22,13 @@ import (
 	"reflect"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
+	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -39,12 +41,12 @@ var workspacelog = logf.Log.WithName("workspace-resource")
 // SetupWorkspaceWebhookWithManager registers the webhook for Workspace in the manager.
 func SetupWorkspaceWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&tenancyv1alpha1.Workspace{}).
-		WithValidator(&WorkspaceCustomValidator{}).
+		WithValidator(&WorkspaceCustomValidator{
+			Client: mgr.GetClient(),
+		}).
 		WithDefaulter(&WorkspaceCustomDefaulter{}).
 		Complete()
 }
-
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 // +kubebuilder:webhook:path=/mutate-tenancy-fcp-funccloud-com-v1alpha1-workspace,mutating=true,failurePolicy=fail,sideEffects=None,groups=tenancy.fcp.funccloud.com,resources=workspaces,verbs=create;update,versions=v1alpha1,name=mworkspace-v1alpha1.kb.io,admissionReviewVersions=v1
 
@@ -54,7 +56,6 @@ func SetupWorkspaceWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type WorkspaceCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
 }
 
 var _ webhook.CustomDefaulter = &WorkspaceCustomDefaulter{}
@@ -72,9 +73,6 @@ func (d *WorkspaceCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
 // +kubebuilder:webhook:path=/validate-tenancy-fcp-funccloud-com-v1alpha1-workspace,mutating=false,failurePolicy=fail,sideEffects=None,groups=tenancy.fcp.funccloud.com,resources=workspaces,verbs=create;update;delete,versions=v1alpha1,name=vworkspace-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // WorkspaceCustomValidator struct is responsible for validating the Workspace resource
@@ -83,7 +81,7 @@ func (d *WorkspaceCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type WorkspaceCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
+	client.Client
 }
 
 var _ webhook.CustomValidator = &WorkspaceCustomValidator{}
@@ -138,6 +136,27 @@ func (v *WorkspaceCustomValidator) ValidateDelete(ctx context.Context, obj runti
 		return nil, fmt.Errorf("expected a Workspace object but got %T", obj)
 	}
 	workspacelog.Info("Validation for Workspace upon deletion", "name", workspace.GetName())
+	apps := workloadv1alpha1.ApplicationList{}
+	// List applications using the workspace label selector
+	if err := v.List(ctx, &apps, client.MatchingLabels{
+		tenancyv1alpha1.WorkspaceLinkedResourceLabel: workspace.Name,
+	}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			workspacelog.Error(err, "Failed to list applications during workspace deletion validation", "workspace", workspace.Name)
+			return nil, fmt.Errorf("failed to check for associated applications: %w", err)
+		}
+		workspacelog.Info("No applications found (or Application CRD not found) during workspace deletion validation, allowing deletion", "workspace", workspace.Name)
+		return nil, nil
+	}
+	if len(apps.Items) > 0 {
+		workspacelog.Info("Denying workspace deletion because associated applications exist", "workspace", workspace.Name, "count", len(apps.Items))
+		return nil, apierrors.NewForbidden(
+			tenancyv1alpha1.GroupVersion.WithResource("workspaces").GroupResource(),
+			workspace.GetName(),
+			fmt.Errorf("workspace cannot be deleted because it contains %d application(s)", len(apps.Items)),
+		)
+	}
+	workspacelog.Info("Allowing workspace deletion as no associated applications were found", "workspace", workspace.Name)
 	return nil, nil
 }
 
@@ -145,7 +164,6 @@ func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
 	var errs field.ErrorList
 	ownersPath := field.NewPath("spec").Child("owners")
 	typePath := field.NewPath("spec").Child("type")
-
 	// Validate Workspace Type
 	if workspace.Spec.Type == "" {
 		errs = append(errs, field.Required(typePath, "workspaceType is required"))
@@ -153,7 +171,6 @@ func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
 		workspace.Spec.Type != tenancyv1alpha1.WorkspaceTypeOrganization {
 		errs = append(errs, field.NotSupported(typePath, workspace.Spec.Type, []string{string(tenancyv1alpha1.WorkspaceTypePersonal), string(tenancyv1alpha1.WorkspaceTypeOrganization)}))
 	}
-
 	// Validate Owners
 	if len(workspace.Spec.Owners) == 0 {
 		errs = append(errs, field.Required(ownersPath, "owners is required"))
@@ -171,7 +188,5 @@ func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
 			}
 		}
 	}
-	// No specific validation for Organization type owners for now, besides being non-empty.
-
 	return errs
 }

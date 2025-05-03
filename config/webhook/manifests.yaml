@@ -24,6 +24,26 @@ webhooks:
     resources:
     - workspaces
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-workload-fcp-funccloud-com-v1alpha1-application
+  failurePolicy: Fail
+  name: mapplication-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - workload.fcp.funccloud.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - applications
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -50,4 +70,25 @@ webhooks:
     - DELETE
     resources:
     - workspaces
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-workload-fcp-funccloud-com-v1alpha1-application
+  failurePolicy: Fail
+  name: vapplication-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - workload.fcp.funccloud.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - applications
   sideEffects: None

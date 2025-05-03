@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/tenancy.fcp.funccloud.com_workspaces.yaml
+- bases/workload.fcp.funccloud.com_applications.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
