@@ -27,6 +27,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ${
 # Use distroless as minimal base image to package the ${APP} binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
+ARG APP
 WORKDIR /
 COPY --from=builder /workspace/${APP} .
 USER 65532:65532
