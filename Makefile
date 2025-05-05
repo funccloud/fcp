@@ -159,7 +159,7 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker images for all apps in APPS list for cross-platform support (uses REGISTRY variable)
 	@for app in $(APPS); do \
-		$(MAKE) docker-buildx-$$app REGISTRY=$(REGISTRY); \
+		$(MAKE) docker-buildx-$$app REGISTRY=$(REGISTRY) VERSION=$(VERSION); \
 	done
 
 # Dynamic buildx target: make docker-buildx-appname REGISTRY=myregistry.io VERSION=v1.0.0
