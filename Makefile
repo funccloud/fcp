@@ -1,5 +1,14 @@
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+# Default Registry
+REGISTRY ?= ghcr.io/funccloud/fcp
+# Default Version
+VERSION ?= latest
+# List of applications
+APPS := manager
+# Default App Name (used if APP is not specified, e.g., in deploy or run)
+APP ?= manager
+
+# Image URL to use all building/pushing image targets (uses default APP and VERSION)
+IMG ?= $(REGISTRY)/$(APP):$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -92,23 +101,53 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/manager/main.go
+build: ## Build binaries for all apps in APPS list.
+	@for app in $(APPS); do \
+		$(MAKE) build-$$app; \
+	done
+
+# Dynamic build target: make build-appname
+# Builds binary bin/appname from cmd/appname/main.go
+.PHONY: build-% 
+build-%: manifests generate fmt vet ## Build binary for a specific app (e.g., make build-manager).
+	go build -o bin/$* cmd/$*/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/manager/main.go
+run: ## Run the default controller ($(APP)) from your host.
+	$(MAKE) run-$(APP)
+
+# Dynamic run target: make run-appname
+# Runs cmd/appname/main.go
+.PHONY: run-%
+run-%: manifests generate fmt vet ## Run a specific controller from your host (e.g., make run-manager).
+	go run ./cmd/$*/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: ## Build docker images for all apps in APPS list (uses REGISTRY variable).
+	@for app in $(APPS); do \
+		$(MAKE) docker-build-$$app REGISTRY=$(REGISTRY); \
+	done
 
 .PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+docker-push: ## Push docker images for all apps in APPS list (uses REGISTRY variable).
+	@for app in $(APPS); do \
+		$(MAKE) docker-push-$$app REGISTRY=$(REGISTRY); \
+	done
+
+# Dynamic build target: make docker-build-appname REGISTRY=myregistry.io VERSION=v1.0.0
+# Builds an image registry/appname:version passing APP=appname as build-arg
+.PHONY: docker-build-%
+docker-build-%: ## Build docker image for a specific app (e.g., make docker-build-manager REGISTRY=... VERSION=...).
+	$(CONTAINER_TOOL) build --build-arg APP=$* -t $(REGISTRY)/$*:$(VERSION) .
+
+# Dynamic push target: make docker-push-appname REGISTRY=myregistry.io VERSION=v1.0.0
+# Pushes the image registry/appname:version
+.PHONY: docker-push-%
+docker-push-%: ## Push docker image for a specific app (e.g., make docker-push-manager REGISTRY=... VERSION=...).
+	$(CONTAINER_TOOL) push $(REGISTRY)/$*:$(VERSION)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -118,19 +157,32 @@ docker-push: ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
+docker-buildx: ## Build and push docker images for all apps in APPS list for cross-platform support (uses REGISTRY variable)
+	@for app in $(APPS); do \
+		$(MAKE) docker-buildx-$$app REGISTRY=$(REGISTRY); \
+	done
+
+# Dynamic buildx target: make docker-buildx-appname REGISTRY=myregistry.io VERSION=v1.0.0
+# Builds and pushes registry/appname:version for multiple platforms
+.PHONY: docker-buildx-%
+docker-buildx-%: ## Build and push docker image for a specific app for cross-platform support (e.g., make docker-buildx-manager REGISTRY=... VERSION=...)
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name fcp-builder
-	$(CONTAINER_TOOL) buildx use fcp-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm fcp-builder
+	sed -e '1 s/\(^FROM\)/FROM --platform=$${BUILDPLATFORM}/; t' -e ' 1,// s//FROM --platform=$${BUILDPLATFORM}/' Dockerfile > Dockerfile.cross
+	- $(CONTAINER_TOOL) buildx create --name fcp-builder-$*
+	$(CONTAINER_TOOL) buildx use fcp-builder-$*
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --build-arg APP=$* --tag $(REGISTRY)/$*:$(VERSION) -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx rm fcp-builder-$*
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment (uses VERSION).
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	@echo "Editing images in config/default for installer (version: $(VERSION))..."
+	@for app in $(APPS); do \
+		echo "  Setting image for $$app to $(REGISTRY)/$$app:$(VERSION)"; \
+		cd config/default && $(KUSTOMIZE) edit set image $$app=$(REGISTRY)/$$app:$(VERSION) && cd ../..; \
+	done
+	@echo "Building installer YAML from config/default..."
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
@@ -148,8 +200,13 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+deploy: manifests kustomize ## Edit images for all APPS in config/default using VERSION and deploy to the K8s cluster.
+	@echo "Editing images in config/default (version: $(VERSION))..."
+	@for app in $(APPS); do \
+		echo "  Setting image for $$app to $(REGISTRY)/$$app:$(VERSION)"; \
+		cd config/default && $(KUSTOMIZE) edit set image $$app=$(REGISTRY)/$$app:$(VERSION) && cd ../..; \
+	done
+	@echo "Applying kustomization from config/default..."
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
