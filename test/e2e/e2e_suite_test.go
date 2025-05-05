@@ -39,7 +39,10 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/fcp:v0.0.1"
+	projectRegistry = "example.com"
+	projectApp      = "manager"
+	projectVersion  = "v0.0.1"
+	projectImage    = fmt.Sprintf("%s/%s:%s", projectRegistry, projectApp, projectVersion)
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -54,7 +57,7 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	cmd := exec.Command("make", "docker-build-manager", fmt.Sprintf("REGISTRY=%s", projectRegistry), fmt.Sprintf("VERSION=%s", projectVersion))
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 

@@ -35,8 +35,8 @@ jobs:
       - name: Prepare fcp
         run: |
           go mod tidy
-          make docker-build IMG=fcp:v0.1.0
-          kind load docker-image fcp:v0.1.0
+          make docker-build VERSION=v0.1.0 REGISTRY=ghcr.io/funccloud/fcp APP=manager
+          kind load docker-image ghcr.io/funccloud/fcp/manager:v0.1.0
 
       - name: Install Helm
         run: |

@@ -1,4 +1,11 @@
 FROM golang:alpine
+
+# Define APP build argument with a default value
+ARG APP=manager
+
 WORKDIR /
-COPY ./bin/manager /
-CMD ["/manager"]
+# Copy the specific application binary based on the APP build argument
+COPY ./bin/${APP} /${APP}
+
+# Set the command to run the specific application binary
+CMD ["/${APP}"]
