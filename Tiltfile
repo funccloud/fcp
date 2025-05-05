@@ -29,7 +29,7 @@ def vetfmt():
     return 'go vet ./...; go fmt ./...'
 
 def binary():
-    return 'CGO_ENABLED=0 GOOS=linux go build -o ./bin/manager cmd/main.go'
+    return 'CGO_ENABLED=0 GOOS=linux go build -o ./bin/manager cmd/manager/main.go'
 
 local('make controller-gen kustomize')
 
@@ -43,7 +43,7 @@ local_resource('un-crd', 'bin/kustomize build config/crd | kubectl delete -f -',
 
 k8s_yaml(yaml())
 
-local_resource('recompile', generate() + binary(), deps=['internal', 'cmd'])
+local_resource('recompile', generate() + binary(), deps=['internal', 'cmd/manager'])
 
 docker_build_with_restart(IMG, '.', 
  dockerfile='tilt.docker',
