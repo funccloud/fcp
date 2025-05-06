@@ -49,7 +49,15 @@ func main() {
 	var enableHTTP2 bool
 	var userInfoEndpoint string
 	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&userInfoEndpoint, "userinfo-endpoint", "", "UserInfo endpoint to use for authentication.")
+        flag.StringVar(&userInfoEndpoint, "userinfo-endpoint", "", "UserInfo endpoint to use for authentication.")
+        // Validate userInfoEndpoint
+        if userInfoEndpoint != "" {
+                _, err := url.ParseRequestURI(userInfoEndpoint)
+                if err != nil {
+                        setupLog.Error(err, "invalid userinfo-endpoint")
+                        os.Exit(1)
+                }
+        }
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
