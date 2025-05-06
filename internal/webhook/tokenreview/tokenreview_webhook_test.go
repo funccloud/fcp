@@ -63,7 +63,7 @@ var _ = Describe("TokenReview Webhook", func() {
 			resp := authenticator.Handle(ctx, authentication.Request{
 				TokenReview: authv1.TokenReview{
 					Spec: authv1.TokenReviewSpec{
-						Token: "",
+						Token: "invalid-token",
 					},
 				},
 			})
