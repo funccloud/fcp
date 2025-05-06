@@ -58,6 +58,7 @@ var (
 	cfg       *rest.Config
 	testEnv   *envtest.Environment
 	s         *httptest.Server
+	err       error
 )
 
 func TestAPIs(t *testing.T) {
@@ -85,7 +86,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	// cfg is defined in this file globally.
-	cfg, err := testEnv.Start()
+	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
