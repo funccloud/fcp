@@ -113,7 +113,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	s = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
-		if token == "" {
+		if token == "Bearer " {
 			http.Error(w, "missing token", http.StatusUnauthorized)
 			return
 		}
