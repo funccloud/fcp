@@ -56,7 +56,7 @@ var _ = Describe("TokenReview Webhook", func() {
 			Expect(resp.Status.User.UID).To(BeEmpty())
 			Expect(resp.Status.User.Groups).To(BeEmpty())
 			Expect(resp.Status.User.Extra).To(BeEmpty())
-			Expect(resp.Status.Error).To(Equal("missing token"))
+			Expect(resp.Status.Error).To(Equal("missing token\n"))
 		})
 
 		It("should fail when token is invalid", func() {
@@ -72,7 +72,7 @@ var _ = Describe("TokenReview Webhook", func() {
 			Expect(resp.Status.User.UID).To(BeEmpty())
 			Expect(resp.Status.User.Groups).To(BeEmpty())
 			Expect(resp.Status.User.Extra).To(BeEmpty())
-			Expect(resp.Status.Error).To(Equal("invalid token"))
+			Expect(resp.Status.Error).To(Equal("invalid token\n"))
 		})
 	})
 })
