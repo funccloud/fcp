@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	authv1 "k8s.io/api/authentication/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,13 +34,16 @@ type Authenticator struct {
 
 // authenticator admits a request by the token.
 func (a *Authenticator) Handle(ctx context.Context, r authentication.Request) authentication.Response {
+	client := http.Client{
+		Timeout: 10 * time.Second,
+	}
 	l := log.FromContext(ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.UserInfoEndpoint, nil)
 	if err != nil {
 		return authentication.Errored(err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", r.Spec.Token))
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return authentication.Errored(err)
 	}

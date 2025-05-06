@@ -32,7 +32,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
 
 	// +kubebuilder:scaffold:imports
@@ -81,19 +80,18 @@ var _ = BeforeSuite(func() {
 		},
 	}
 
-	var err error
+	if getFirstFoundEnvTestBinaryDir() != "" {
+		testEnv.BinaryAssetsDirectory = getFirstFoundEnvTestBinaryDir()
+	}
+
 	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
+	cfg, err := testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
 	// Add necessary schemes
-	err = admissionv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
 	err = authenticationv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-
-	// +kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -136,8 +134,6 @@ var _ = BeforeSuite(func() {
 	}))
 	err = SetupTokenReviewWebhookWithManager(mgr, s.URL) // Register the TokenReview webhook
 	Expect(err).NotTo(HaveOccurred())
-
-	// +kubebuilder:scaffold:webhook
 
 	go func() {
 		defer GinkgoRecover()
@@ -191,11 +187,3 @@ func getFirstFoundEnvTestBinaryDir() string {
 	logf.Log.Info("envtest binary directory not found, KUBEBUILDER_ASSETS might need to be set", "path", basePath)
 	return ""
 }
-
-// Ensure getFirstFoundEnvTestBinaryDir is called early
-var _ = func() string {
-	// Call this during package initialization to set testEnv.BinaryAssetsDirectory
-	// before BeforeSuite potentially uses it (though Start() implicitly handles this).
-	// This makes the logic clearer.
-	return getFirstFoundEnvTestBinaryDir()
-}()
