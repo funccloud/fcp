@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"go.funccloud.dev/fcp/internal/resource/certmanager"
+	"go.funccloud.dev/fcp/internal/resource/fcp"
 	"go.funccloud.dev/fcp/internal/resource/kind"
 	"go.funccloud.dev/fcp/internal/resource/knative"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,6 +40,10 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		log.Error(err, "Error checking or installing Knative")
 		return err
 	}
-
+	err = fcp.SetupKubeAuthenticator(ctx, k8sClient, log, onKind)
+	if err != nil {
+		log.Error(err, "Error setting up kube-authenticator")
+		return err
+	}
 	return nil
 }

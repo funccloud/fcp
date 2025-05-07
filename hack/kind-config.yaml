@@ -9,3 +9,5 @@ nodes:
     hostPort: 80
   - containerPort: 31443
     hostPort: 443
+  - containerPort: 31643
+    hostPort: 6443

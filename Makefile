@@ -3,7 +3,7 @@ REGISTRY ?= ghcr.io/funccloud/fcp
 # Default Version
 VERSION ?= latest
 # List of applications
-APPS := manager
+APPS := manager kube-authenticator
 # Default App Name (used if APP is not specified, e.g., in deploy or run)
 APP ?= manager
 
