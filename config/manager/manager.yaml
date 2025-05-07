@@ -65,6 +65,9 @@ spec:
           - --health-probe-bind-address=:8081
         image: manager:latest
         name: manager
+        env:
+          - name: DEFAULT_DOMAIN
+            value: "fcp.funccloud.dev"
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
