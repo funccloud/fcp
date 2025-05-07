@@ -7,7 +7,7 @@ watch_settings(ignore=['bin'])
 # --- Configuration ---
 REGISTRY = 'ghcr.io/funccloud/fcp' # Or use read_json('tilt_config.json').get('registry', 'default_registry')
 VERSION = 'latest' # Read version from env var, default to latest
-APPS = ['manager']
+APPS = ['manager', 'kube-authenticator'] # List of apps to build
 DEFAULT_APP = 'manager' # App used for single-app commands if needed
 
 # --- Helper Functions ---

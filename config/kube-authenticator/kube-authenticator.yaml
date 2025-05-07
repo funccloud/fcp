@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-authenticator-sa
+  namespace: system # Assuming the same namespace as other components
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-authenticator
+  namespace: system # Assuming the same namespace
+  labels:
+    app.kubernetes.io/name: kube-authenticator
+    app.kubernetes.io/component: webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-authenticator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-authenticator
+    spec:
+      serviceAccountName: kube-authenticator-sa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: authenticator
+        image: kube-authenticator:latest # Placeholder, will be updated by kustomize
+        env:
+        - name: USERINFO_ENDPOINT
+          value: "https://id.funccloud.com/userinfo" # Default or placeholder value
+        command:
+        - /kube-authenticator
+        args:
+        - --webhook-cert-path=/tmp/kube-authenticator/certs
+        - --webhook-cert-name=tls.crt
+        - --webhook-cert-key=tls.key
+        - --metrics-bind-address=:8080 # Or 0 to disable if not needed via kustomize patch
+        - --health-probe-bind-address=:8081
+        ports:
+        - containerPort: 6443
+          name: webhook
+          protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health # Corresponds to containerPort 8081
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health # Corresponds to containerPort 8081
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: webhook-authenticator-certs
+          mountPath: /tmp/kube-authenticator/certs
+          readOnly: true
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+      volumes:
+      - name: webhook-authenticator-certs
+        secret:
+          secretName: kube-authenticator-webhook-certs # This secret needs to be created (e.g., by cert-manager)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-authenticator-webhook-service
+  namespace: system # Assuming the same namespace
+  labels:
+    app.kubernetes.io/name: kube-authenticator
+spec:
+  selector:
+    app.kubernetes.io/name: kube-authenticator
+  type: LoadBalancer
+  ports:
+  - port: 6443 # Standard webhook port, targets containerPort 6443
+    targetPort: webhook
+    nodePort: 31643
+    protocol: TCP

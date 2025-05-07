@@ -1,0 +1,18 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kube-authenticator-serving-cert
+  namespace: system # This will be overridden by the namespace in config/default/kustomization.yaml
+spec:
+  secretName: kube-authenticator-webhook-certs
+  dnsNames:
+  # KUBE_AUTHENTICATOR_SERVICE_NAME and KUBE_AUTHENTICATOR_SERVICE_NAMESPACE will be substituted by kustomize
+  # replacements in the config/default/kustomization.yaml file.
+  - KUBE_AUTHENTICATOR_SERVICE_NAME.KUBE_AUTHENTICATOR_SERVICE_NAMESPACE.svc
+  - KUBE_AUTHENTICATOR_SERVICE_NAME.KUBE_AUTHENTICATOR_SERVICE_NAMESPACE.svc.cluster.local
+  - servers.fcp.funccloud.com
+  - 127.0.0.1.sslip.io
+  issuerRef:
+    name: selfsigned-issuer # Assumes this issuer exists in the target namespace
+    kind: Issuer
+    group: cert-manager.io
