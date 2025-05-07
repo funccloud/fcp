@@ -30,6 +30,9 @@ spec:
       containers:
       - name: authenticator
         image: kube-authenticator:latest # Placeholder, will be updated by kustomize
+        env:
+        - name: USERINFO_ENDPOINT
+          value: "https://id.funccloud.com/userinfo" # Default or placeholder value
         command:
         - /kube-authenticator
         args:
@@ -38,7 +41,6 @@ spec:
         - --webhook-cert-key=tls.key
         - --metrics-bind-address=:8080 # Or 0 to disable if not needed via kustomize patch
         - --health-probe-bind-address=:8081
-        # - --userinfo-endpoint=YOUR_USERINFO_ENDPOINT # This should be configured
         ports:
         - containerPort: 6443
           name: webhook
