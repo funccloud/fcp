@@ -13,3 +13,6 @@ subjects:
 - kind: ServiceAccount
   name: controller-manager
   namespace: system
+- kind: ServiceAccount
+  name: kube-authenticator-sa
+  namespace: system

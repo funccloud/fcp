@@ -40,10 +40,24 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		log.Error(err, "Error checking or installing Knative")
 		return err
 	}
-	err = fcp.SetupKubeAuthenticator(ctx, k8sClient, log, onKind)
+	return nil
+}
+
+func SetupKubeAuthenticator(ctx context.Context, k8sClient client.Client, log logr.Logger) error {
+	onKind, err := kind.IsKindCluster(ctx, k8sClient)
 	if err != nil {
-		log.Error(err, "Error setting up kube-authenticator")
-		return err
+		log.Error(err, "Error checking for kindnet daemonset")
+		// Decide if we should proceed or return; for now, assume not Kind if error occurs
+		onKind = false
+	}
+	if onKind {
+		err = fcp.SetupKubeAuthenticator(ctx, k8sClient, log, onKind)
+		if err != nil {
+			log.Error(err, "Error setting up kube-authenticator")
+			return err
+		}
+	} else {
+		log.Info("Did not detect Kind cluster (kindnet daemonset not found or error occurred).")
 	}
 	return nil
 }
