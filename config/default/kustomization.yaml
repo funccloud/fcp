@@ -30,7 +30,6 @@ resources:
 - ../manager
 - ../webhook
 - ../certmanager
-- ../kube-authenticator
 - metrics_service.yaml
 - ../network-policy
 
@@ -211,45 +210,9 @@ replacements:
       index: 1
     select:
       kind: MutatingWebhookConfiguration
-# Add replacements for kube-authenticator certificate
-- source:
-    kind: Service
-    name: kube-authenticator-webhook-service # This should match the service name for kube-authenticator
-    version: v1
-    fieldPath: metadata.name
-  targets:
-  - select:
-      kind: Certificate
-      name: kube-authenticator-serving-cert # This should match the certificate name
-      group: cert-manager.io
-    fieldPaths:
-    - spec.dnsNames.0
-    - spec.dnsNames.1
-    options:
-      delimiter: .
-      index: 0 # Replace KUBE_AUTHENTICATOR_SERVICE_NAME placeholder
-- source:
-    kind: Service
-    name: kube-authenticator-webhook-service # This should match the service name for kube-authenticator
-    version: v1
-    fieldPath: metadata.namespace
-  targets:
-  - select:
-      kind: Certificate
-      name: kube-authenticator-serving-cert # This should match the certificate name
-      group: cert-manager.io
-    fieldPaths:
-    - spec.dnsNames.0
-    - spec.dnsNames.1
-    options:
-      delimiter: .
-      index: 1 # Replace KUBE_AUTHENTICATOR_SERVICE_NAMESPACE placeholder
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: manager
   newName: ghcr.io/funccloud/fcp/manager
-  newTag: latest
-- name: kube-authenticator
-  newName: ghcr.io/funccloud/fcp/kube-authenticator
   newTag: latest

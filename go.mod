@@ -18,7 +18,6 @@ require (
 	knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3
 	knative.dev/serving v0.45.0
 	sigs.k8s.io/controller-runtime v0.20.4
-	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -108,4 +107,5 @@ require (
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
+	sigs.k8s.io/yaml v1.4.0 // indirect
 )
