@@ -67,7 +67,7 @@ spec:
         name: manager
         env:
           - name: DEFAULT_DOMAIN
-            value: "fcp.funccloud.dev"
+            value: ""
         ports: []
         securityContext:
           allowPrivilegeEscalation: false

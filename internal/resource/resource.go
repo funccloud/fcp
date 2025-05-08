@@ -18,7 +18,7 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		// Decide if we should proceed or return; for now, assume not Kind if error occurs
 		onKind = false
 	}
-	if onKind {
+	if onKind && domain == "" {
 		log.Info("Detected Kind cluster via kindnet daemonset. Recommended for dev environment.")
 		log.Info("Setting domain to 127.0.0.1.sslip.io")
 		domain = "127.0.0.1.sslip.io"
