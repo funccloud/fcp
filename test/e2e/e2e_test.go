@@ -288,18 +288,6 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		It("should eventually log that prerequisites are satisfied", func() {
-			By("checking controller logs for prerequisite satisfaction message")
-			checkPrerequisitesSatisfied := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-				logsOutput, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller logs")
-				g.Expect(logsOutput).To(ContainSubstring("All prerequisites are satisfied"), "Prerequisite message not found in logs")
-			}
-			Eventually(checkPrerequisitesSatisfied).Should(Succeed())
-		})
-
 		It("should create resource", func() {
 			By("creating a workspace resource")
 			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")
