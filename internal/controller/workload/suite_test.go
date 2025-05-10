@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
 	"go.funccloud.dev/fcp/internal/yamlutil"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
@@ -90,7 +91,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 	// Install knative CRDs
-	err = yamlutil.ApplyManifestFromURL(ctx, k8sClient, logf.Log, knativeCRDsURL)
+	ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+	err = yamlutil.ApplyManifestFromURL(ctx, k8sClient, ioStreams, knativeCRDsURL)
 	Expect(err).NotTo(HaveOccurred())
 	err = servingv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())

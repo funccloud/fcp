@@ -7,5 +7,7 @@ nodes:
   extraPortMappings:
   - containerPort: 31080
     hostPort: 80
+    listenAddress: "0.0.0.0"  
   - containerPort: 31443
     hostPort: 443
+    listenAddress: "0.0.0.0"

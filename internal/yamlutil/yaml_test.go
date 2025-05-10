@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -49,7 +51,8 @@ metadata:
 data:
   key: value
 `
-				err := ApplyManifestYAML(ctx, k8sClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, k8sClient, manifest, ioStreams)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify the object was created/patched
@@ -77,7 +80,8 @@ metadata:
 data:
   multi: obj
 `
-				err := ApplyManifestYAML(ctx, k8sClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, k8sClient, manifest, ioStreams)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify namespace
@@ -98,7 +102,8 @@ data:
 		Context("with an empty manifest", func() {
 			It("should return no error", func() {
 				manifest := ``
-				err := ApplyManifestYAML(ctx, k8sClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, k8sClient, manifest, ioStreams)
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
@@ -113,7 +118,8 @@ data:
 
 ---
 `
-				err := ApplyManifestYAML(ctx, k8sClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, k8sClient, manifest, ioStreams)
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
@@ -130,7 +136,8 @@ data:
   key: value
 invalid-yaml: :
 `
-				err := ApplyManifestYAML(ctx, k8sClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, k8sClient, manifest, ioStreams)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to decode YAML object"))
 			})
@@ -154,7 +161,8 @@ metadata:
 data:
   key: value
 `
-				err := ApplyManifestYAML(ctx, failingClient, manifest, log)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestYAML(ctx, failingClient, manifest, ioStreams)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to apply object ConfigMap/test-cm-fail"))
 				Expect(err.Error()).To(ContainSubstring("simulated patch error"))
@@ -196,7 +204,8 @@ spec:
 				})
 
 				url := server.URL + "/manifest.yaml"
-				err := ApplyManifestFromURL(ctx, k8sClient, log, url)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestFromURL(ctx, k8sClient, ioStreams, url)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify the object was created/patched
@@ -215,7 +224,8 @@ spec:
 				})
 
 				url := server.URL + "/notfound.yaml"
-				err := ApplyManifestFromURL(ctx, k8sClient, log, url)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestFromURL(ctx, k8sClient, ioStreams, url)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("non-OK status (404) downloading manifest"))
 			})
@@ -225,7 +235,8 @@ spec:
 			It("should return an error", func() {
 				// No server running at this address
 				url := "http://invalid-address-that-does-not-exist/manifest.yaml"
-				err := ApplyManifestFromURL(ctx, k8sClient, log, url)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestFromURL(ctx, k8sClient, ioStreams, url)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(SatisfyAny(
 					ContainSubstring("error downloading manifest"),
@@ -264,7 +275,8 @@ spec:
 				})
 
 				url := server.URL + "/fail-apply.yaml"
-				err := ApplyManifestFromURL(ctx, failingClient, log, url)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestFromURL(ctx, failingClient, ioStreams, url)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("error applying manifest from"))
 				Expect(err.Error()).To(ContainSubstring("simulated patch error during URL apply"))
@@ -282,7 +294,8 @@ spec:
 				})
 
 				url := server.URL + "/invalid.yaml"
-				err := ApplyManifestFromURL(ctx, k8sClient, log, url)
+				ioStreams := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
+				err := ApplyManifestFromURL(ctx, k8sClient, ioStreams, url)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("error applying manifest from"))
 				Expect(err.Error()).To(ContainSubstring("failed to decode YAML object"))

@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"go.funccloud.dev/fcp/internal/cmd/install"
 	"go.funccloud.dev/fcp/internal/cmd/plugin"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -249,8 +250,8 @@ func HandlePluginCommand(pluginHandler PluginHandler, cmdArgs []string, minArgs 
 		if strings.HasPrefix(arg, "-") {
 			break
 		}
-		t := plugin.ValidSubcommandBinaries[arg]
-		if i == 0 && t != "" {
+		t, ok := plugin.ValidSubcommandBinaries[arg]
+		if i == 0 && ok {
 			arg = t
 		}
 		remainingArgs = append(remainingArgs, strings.Replace(arg, "-", "_", -1))
@@ -379,6 +380,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 
 	cmds.AddCommand(plugin.NewCmdPlugin(o.IOStreams))
 	cmds.AddCommand(version.NewCmdVersion(f, o.IOStreams))
+	cmds.AddCommand(install.NewCmdInstall(f, o.IOStreams))
 
 	// Stop warning about normalization of flags. That makes it possible to
 	// add the klog flags later.

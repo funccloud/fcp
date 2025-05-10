@@ -5,10 +5,12 @@ import (
 	"context"
 	_ "embed" // Import the embed package
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"text/template"
 	"time"
 
-	"github.com/go-logr/logr" // Import the kind package
 	"go.funccloud.dev/fcp/internal/yamlutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,8 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/util/yaml"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml" // Standard K8s YAML decoder
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml" // For marshalling objects back to YAML
 )
 
 //go:embed knative.yaml
@@ -27,13 +31,19 @@ var knativeServingYAML []byte // Embed the knative.yaml file
 
 const (
 	// Knative Operator version and URL
-	knativeOperatorVersion = "v1.18.0"
-	knativeOperatorURL     = "https://github.com/knative/operator/releases/download/knative-" +
+	knativeOperatorVersion = "v1.18.1"
+	knativeVersion         = "v1.18.0"
+	netContourVersion      = "v1.18.0"
+
+	knativeOperatorURL = "https://github.com/knative/operator/releases/download/knative-" +
 		knativeOperatorVersion + "/operator.yaml"
 
 	// Knative Serving Default Domain URL (for Kind)
 	knativeServingDefaultDomainURL = "https://github.com/knative/serving/releases/download/knative-" +
-		knativeOperatorVersion + "/serving-default-domain.yaml" // Use the same version for consistency
+		knativeVersion + "/serving-default-domain.yaml"
+
+	contourURL = "https://github.com/knative/net-contour/releases/download/knative-" +
+		netContourVersion + "/contour.yaml"
 
 	// Knative Operator details
 	knativeOperatorNamespace  = "knative-operator"
@@ -50,50 +60,110 @@ const (
 	applyTimeout  = 5 * time.Minute
 	checkInterval = 10 * time.Second
 	waitTimeout   = 15 * time.Minute
+
+	// Contour service modification details for Kind
+	httpNodePort    = int64(31080)
+	httpsNodePort   = int64(31443)
+	httpTargetPort  = int64(8080) // Default target for HTTP
+	httpsTargetPort = int64(8443) // Default target for HTTPS
 )
 
 // InstallKnative installs Knative Serving using the Knative Operator.
-func InstallKnative(ctx context.Context, domain, issuerName string, isKind bool, k8sClient client.Client, log logr.Logger) error {
+func InstallKnative(
+	ctx context.Context,
+	domain, issuerName string,
+	isKind bool,
+	k8sClient client.Client,
+	ioStreams genericiooptions.IOStreams,
+) error {
 	applyCtx, cancel := context.WithTimeout(ctx, applyTimeout)
 	defer cancel()
 
-	// 1. Apply Knative Operator manifest
-	log.Info("Applying Knative Operator manifest...", "url", knativeOperatorURL)
-	if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, log, knativeOperatorURL); err != nil {
+	// 1. Fetch and Apply Contour manifest
+	_, _ = fmt.Fprintln(ioStreams.Out, "Fetching Contour manifest from...", "url", contourURL)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, contourURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request for Contour manifest: %w", err)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to download Contour manifest from %s: %w", contourURL, err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log or handle the error if necessary, for now, we'll print it to ErrOut
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "failed to close response body:", closeErr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download Contour manifest: status %s from %s", resp.Status, contourURL)
+	}
+
+	contourManifestBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read Contour manifest body: %w", err)
+	}
+
+	contourManifestContent := string(contourManifestBytes)
+
+	if isKind {
+		// The primary logging for this step is now within modifyContourServiceForKind
+		modifiedManifest, err := modifyContourServiceForKind(contourManifestContent, ioStreams)
+		if err != nil {
+			return fmt.Errorf("failed to modify Contour manifest for Kind: %w", err)
+		}
+		contourManifestContent = modifiedManifest
+	}
+
+	_, _ = fmt.Fprintln(ioStreams.Out, "Applying Contour manifest...")
+	if err := yamlutil.ApplyManifestYAML(applyCtx, k8sClient, contourManifestContent, ioStreams); err != nil {
+		return fmt.Errorf("failed to apply Contour manifest: %w", err)
+	}
+
+	// 2. Apply Knative Operator manifest
+	_, _ = fmt.Fprintln(ioStreams.Out, "Applying Knative Operator manifest...", "url", knativeOperatorURL)
+	if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, ioStreams, knativeOperatorURL); err != nil {
 		return fmt.Errorf("failed to apply Knative Operator manifest from %s: %w", knativeOperatorURL, err)
 	}
 
-	// 2. Wait for Knative Operator deployment to be ready
+	// 3. Wait for Knative Operator deployment to be ready
 	operatorNN := types.NamespacedName{Namespace: knativeOperatorNamespace, Name: knativeOperatorDeployment}
-	log.Info("Waiting for Knative Operator deployment to become ready...", "namespace", operatorNN.Namespace, "name", operatorNN.Name)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for Knative Operator deployment to become ready...",
+		"namespace", operatorNN.Namespace, "name", operatorNN.Name)
 	waitCtxOperator, cancelOperatorWait := context.WithTimeout(ctx, waitTimeout)
 	defer cancelOperatorWait()
 	if err := waitForDeploymentReady(waitCtxOperator, k8sClient, operatorNN); err != nil {
-		log.Error(err, "Knative Operator deployment did not become ready within timeout", "namespace", operatorNN.Namespace, "name", operatorNN.Name)
-		return fmt.Errorf("knative operator deployment %s/%s did not become ready: %w", operatorNN.Namespace, operatorNN.Name, err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Knative Operator deployment did not become ready within timeout",
+			"namespace", operatorNN.Namespace, "name", operatorNN.Name, "error", err)
+		return fmt.Errorf("knative operator deployment %s/%s did not become ready: %w",
+			operatorNN.Namespace, operatorNN.Name, err)
 	}
-	log.Info("Knative Operator deployment is ready.", "namespace", operatorNN.Namespace, "name", operatorNN.Name)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Knative Operator deployment is ready.",
+		"namespace", operatorNN.Namespace, "name", operatorNN.Name)
 
-	// 3. Ensure knative-serving namespace exists (Operator might not create it)
+	// 4. Ensure knative-serving namespace exists (Operator might not create it)
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: knativeServingNamespace}}
 	if err := k8sClient.Get(ctx, types.NamespacedName{Name: knativeServingNamespace}, ns); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Creating knative-serving namespace")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Creating knative-serving namespace")
 			if createErr := k8sClient.Create(ctx, ns); createErr != nil {
-				log.Error(createErr, "Failed to create knative-serving namespace")
+				_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to create knative-serving namespace", "error", createErr)
 				return fmt.Errorf("failed to create namespace %s: %w", knativeServingNamespace, createErr)
 			}
 		} else {
-			log.Error(err, "Failed to check knative-serving namespace")
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to check knative-serving namespace", "error", err)
 			return fmt.Errorf("failed to check namespace %s: %w", knativeServingNamespace, err)
 		}
 	}
 
-	// 4. Apply KnativeServing CR from embedded YAML
-	log.Info("Applying KnativeServing custom resource from embedded YAML...", "namespace", knativeServingNamespace, "name", knativeServingCRName)
+	// 5. Apply KnativeServing CR from embedded YAML
+	_, _ = fmt.Fprintln(ioStreams.Out, "Applying KnativeServing custom resource from embedded YAML...",
+		"namespace", knativeServingNamespace, "name", knativeServingCRName)
 	tpl, err := template.New("knativeServingTemplate").Parse(string(knativeServingYAML))
 	if err != nil {
-		log.Error(err, "Failed to parse embedded KnativeServing YAML template")
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to parse embedded KnativeServing YAML template", "error", err)
 		return fmt.Errorf("failed to parse embedded KnativeServing YAML template: %w", err)
 	}
 	buff := bytes.Buffer{}
@@ -103,20 +173,22 @@ func InstallKnative(ctx context.Context, domain, issuerName string, isKind bool,
 		"IsKind":     isKind,
 	})
 	if err != nil {
-		log.Error(err, "Failed to execute embedded KnativeServing YAML template")
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to execute embedded KnativeServing YAML template", "error", err)
 		return fmt.Errorf("failed to execute embedded KnativeServing YAML template: %w", err)
 	}
 	// Decode the embedded YAML into an unstructured object
 	knativeServingCR := &unstructured.Unstructured{}
-	decoder := yaml.NewYAMLOrJSONDecoder(&buff, 4096)
+	// Use k8syaml for decoding from a reader
+	decoder := k8syaml.NewYAMLOrJSONDecoder(&buff, 4096)
 	if err := decoder.Decode(knativeServingCR); err != nil {
-		log.Error(err, "Failed to decode embedded KnativeServing YAML")
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to decode embedded KnativeServing YAML", "error", err)
 		return fmt.Errorf("failed to decode embedded KnativeServing YAML: %w", err)
 	}
 
 	// Ensure the namespace is set correctly (it should be in the YAML, but double-check)
 	if knativeServingCR.GetNamespace() != knativeServingNamespace {
-		log.Info("Setting namespace on embedded KnativeServing CR", "namespace", knativeServingNamespace)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Setting namespace on embedded KnativeServing CR",
+			"namespace", knativeServingNamespace)
 		knativeServingCR.SetNamespace(knativeServingNamespace)
 	}
 
@@ -124,32 +196,44 @@ func InstallKnative(ctx context.Context, domain, issuerName string, isKind bool,
 	patch := client.Apply
 	force := true
 	patchOptions := &client.PatchOptions{FieldManager: "fcp-controller", Force: &force}
-	if err = k8sClient.Patch(ctx, knativeServingCR, patch, patchOptions); err != nil { // Assign error to existing 'err' variable
-		log.Error(err, "Failed to apply KnativeServing custom resource", "namespace", knativeServingNamespace, "name", knativeServingCRName)
-		return fmt.Errorf("failed to apply KnativeServing CR %s/%s: %w", knativeServingNamespace, knativeServingCRName, err)
+	// Assign error to existing 'err' variable
+	if err = k8sClient.Patch(ctx, knativeServingCR, patch, patchOptions); err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply KnativeServing custom resource",
+			"namespace", knativeServingNamespace, "name", knativeServingCRName, "error", err)
+		return fmt.Errorf("failed to apply KnativeServing CR %s/%s: %w",
+			knativeServingNamespace, knativeServingCRName, err)
 	}
-	log.Info("KnativeServing custom resource applied.", "namespace", knativeServingNamespace, "name", knativeServingCRName)
+	_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing custom resource applied.",
+		"namespace", knativeServingNamespace, "name", knativeServingCRName)
 
-	// 5. Wait for Knative Serving components (managed by Operator) to become ready
-	log.Info("Waiting for Knative Serving components (managed by Operator) to become ready...")
-	if err = waitForOperatorManagedDeploymentsReady(ctx, k8sClient, log); err != nil { // Assign error to existing 'err' variable
+	// 6. Wait for Knative Serving components (managed by Operator) to become ready (Step was misnumbered as 5 before)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for Knative Serving components (managed by Operator) to become ready...")
+	// Assign error to existing 'err' variable
+	if err = waitForOperatorManagedDeploymentsReady(ctx, k8sClient, ioStreams); err != nil {
 		return err // Error already logged in the function
 	}
 	if isKind {
-		log.Info("Applying Knative Serving default domain manifest for Kind...", "url", knativeServingDefaultDomainURL)
-		if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, log, knativeServingDefaultDomainURL); err != nil {
-			log.Error(err, "Failed to apply Knative Serving default domain manifest", "url", knativeServingDefaultDomainURL)
-			return fmt.Errorf("failed to apply Knative Serving default domain manifest from %s: %w", knativeServingDefaultDomainURL, err)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Applying Knative Serving default domain manifest for Kind...",
+			"url", knativeServingDefaultDomainURL)
+		if err := yamlutil.ApplyManifestFromURL(applyCtx, k8sClient, ioStreams, knativeServingDefaultDomainURL); err != nil {
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply Knative Serving default domain manifest",
+				"url", knativeServingDefaultDomainURL, "error", err)
+			return fmt.Errorf("failed to apply Knative Serving default domain manifest from %s: %w",
+				knativeServingDefaultDomainURL, err)
 		} else {
-			log.Info("Successfully applied Knative Serving default domain manifest.")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Successfully applied Knative Serving default domain manifest.")
 		}
 	}
-	log.Info("Knative Operator installation and Serving readiness checks completed.")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Knative Operator installation and Serving readiness checks completed.")
 	return nil
 }
 
 // waitForOperatorManagedDeploymentsReady waits for the core Knative Serving deployments created by the Operator.
-func waitForOperatorManagedDeploymentsReady(ctx context.Context, k8sClient client.Client, log logr.Logger) error {
+func waitForOperatorManagedDeploymentsReady(
+	ctx context.Context,
+	k8sClient client.Client,
+	ioStreams genericiooptions.IOStreams,
+) error {
 	waitCtx, waitCancel := context.WithTimeout(ctx, waitTimeout)
 	defer waitCancel()
 
@@ -163,23 +247,31 @@ func waitForOperatorManagedDeploymentsReady(ctx context.Context, k8sClient clien
 	}
 
 	for _, nn := range components {
-		log.Info("Waiting for Operator-managed deployment...", "namespace", nn.Namespace, "name", nn.Name)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for Operator-managed deployment...",
+			"namespace", nn.Namespace, "name", nn.Name)
 		if err := waitForDeploymentReady(waitCtx, k8sClient, nn); err != nil {
 			// No alternative namespace check needed here as Operator manages these directly
-			log.Error(err, "Operator-managed deployment did not become ready within timeout", "namespace", nn.Namespace, "name", nn.Name)
-			return fmt.Errorf("operator-managed deployment %s/%s did not become ready: %w", nn.Namespace, nn.Name, err)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Operator-managed deployment did not become ready within timeout",
+				"namespace", nn.Namespace, "name", nn.Name, "error", err)
+			return fmt.Errorf("operator-managed deployment %s/%s did not become ready: %w",
+				nn.Namespace, nn.Name, err)
 		}
-		log.Info("Operator-managed deployment is ready", "namespace", nn.Namespace, "name", nn.Name)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Operator-managed deployment is ready",
+			"namespace", nn.Namespace, "name", nn.Name)
 	}
 
 	// Additionally, wait for KnativeServing CR to report Ready status
-	log.Info("Waiting for KnativeServing CR to become ready...", "namespace", knativeServingNamespace, "name", knativeServingCRName)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for KnativeServing CR to become ready...",
+		"namespace", knativeServingNamespace, "name", knativeServingCRName)
 	knativeServingNN := types.NamespacedName{Namespace: knativeServingNamespace, Name: knativeServingCRName}
 	if err := waitForKnativeServingReady(waitCtx, k8sClient, knativeServingNN); err != nil {
-		log.Error(err, "KnativeServing CR did not become ready within timeout", "namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name)
-		return fmt.Errorf("KnativeServing CR %s/%s did not become ready: %w", knativeServingNN.Namespace, knativeServingNN.Name, err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "KnativeServing CR did not become ready within timeout",
+			"namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name, "error", err)
+		return fmt.Errorf("KnativeServing CR %s/%s did not become ready: %w",
+			knativeServingNN.Namespace, knativeServingNN.Name, err)
 	}
-	log.Info("KnativeServing CR is ready.", "namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name)
+	_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing CR is ready.",
+		"namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name)
 
 	return nil
 }
@@ -250,4 +342,159 @@ func waitForKnativeServingReady(ctx context.Context, k8sClient client.Client, nn
 		// Ready condition not found yet
 		return false, nil
 	})
+}
+
+// configureSpecForNodePort takes a service spec, modifies it to be a NodePort service
+// with specific HTTP/HTTPS port configurations, and returns the modified spec.
+// serviceNamespace and serviceName are used for logging purposes.
+func configureSpecForNodePort(
+	spec map[string]interface{},
+	serviceNamespace, serviceName string,
+	ioStreams genericiooptions.IOStreams,
+) (map[string]interface{}, error) {
+	if err := unstructured.SetNestedField(spec, "NodePort", "type"); err != nil {
+		return nil, fmt.Errorf("failed to set service type to NodePort for %s/%s: %w", serviceNamespace, serviceName, err)
+	}
+
+	ports, portsFound, errPorts := unstructured.NestedSlice(spec, "ports")
+	if errPorts != nil {
+		return nil, fmt.Errorf("error getting ports from service spec %s/%s: %w", serviceNamespace, serviceName, errPorts)
+	}
+	if !portsFound {
+		ports = []interface{}{} // Initialize if not found
+	}
+
+	var httpPortExists, httpsPortExists bool
+	updatedPorts := []interface{}{}
+
+	for _, p := range ports {
+		portMap, ok := p.(map[string]interface{})
+		if !ok {
+			updatedPorts = append(updatedPorts, p) // Keep non-map items
+			continue
+		}
+
+		portNum, numFound, _ := unstructured.NestedInt64(portMap, "port")
+		if !numFound {
+			updatedPorts = append(updatedPorts, portMap) // Keep port if number not found
+			continue
+		}
+
+		if portNum == 80 {
+			_, _ = fmt.Fprintf(ioStreams.Out,
+				"Updating HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\n",
+				serviceNamespace, serviceName, httpNodePort, httpTargetPort) // nolint:errcheck
+			if err := unstructured.SetNestedField(portMap, httpNodePort, "nodePort"); err != nil {
+				return nil, fmt.Errorf("failed to set http nodePort for %s/%s: %w", serviceNamespace, serviceName, err)
+			}
+			// Ensure targetPort is set
+			if err := unstructured.SetNestedField(portMap, httpTargetPort, "targetPort"); err != nil {
+				return nil, fmt.Errorf("failed to set http targetPort for %s/%s: %w", serviceNamespace, serviceName, err)
+			}
+			httpPortExists = true
+		} else if portNum == 443 {
+			_, _ = fmt.Fprintf(ioStreams.Out,
+				"Updating HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\n",
+				serviceNamespace, serviceName, httpsNodePort, httpsTargetPort) // nolint:errcheck
+			if err := unstructured.SetNestedField(portMap, httpsNodePort, "nodePort"); err != nil {
+				return nil, fmt.Errorf("failed to set https nodePort for %s/%s: %w", serviceNamespace, serviceName, err)
+			}
+			// Ensure targetPort is set
+			if err := unstructured.SetNestedField(portMap, httpsTargetPort, "targetPort"); err != nil {
+				return nil, fmt.Errorf("failed to set https targetPort for %s/%s: %w", serviceNamespace, serviceName, err)
+			}
+			httpsPortExists = true
+		}
+		updatedPorts = append(updatedPorts, portMap)
+	}
+
+	if !httpPortExists {
+		_, _ = fmt.Fprintf(ioStreams.Out,
+			"Adding HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\n",
+			serviceNamespace, serviceName, httpNodePort, httpTargetPort) // nolint:errcheck
+		updatedPorts = append(updatedPorts, map[string]interface{}{
+			"name": "http", "port": int64(80), "protocol": "TCP",
+			"targetPort": httpTargetPort, "nodePort": httpNodePort,
+		})
+	}
+	if !httpsPortExists {
+		_, _ = fmt.Fprintf(ioStreams.Out,
+			"Adding HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\n",
+			serviceNamespace, serviceName, httpsNodePort, httpsTargetPort) // nolint:errcheck
+		updatedPorts = append(updatedPorts, map[string]interface{}{
+			"name": "https", "port": int64(443), "protocol": "TCP",
+			"targetPort": httpsTargetPort, "nodePort": httpsNodePort,
+		})
+	}
+	if err := unstructured.SetNestedSlice(spec, updatedPorts, "ports"); err != nil {
+		return nil, fmt.Errorf("failed to set updated ports for %s/%s: %w", serviceNamespace, serviceName, err)
+	}
+	return spec, nil
+}
+
+// modifyLoadBalancerServicesToNodePort processes a YAML manifest string,
+// finds all Kubernetes services of type LoadBalancer, changes their type to NodePort,
+// and configures HTTP (80) and HTTPS (443) ports with specific nodePort and targetPort values.
+func modifyLoadBalancerServicesToNodePort(manifestYAML string, ioStreams genericiooptions.IOStreams) (string, error) {
+	decoder := k8syaml.NewYAMLOrJSONDecoder(strings.NewReader(manifestYAML), 4096)
+	var resultBuilder strings.Builder
+	firstDocument := true
+
+	for {
+		obj := &unstructured.Unstructured{}
+		err := decoder.Decode(obj)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to decode YAML object: %w", err)
+		}
+		// Skip empty documents that might result from comments or multiple '---'
+		if obj.Object == nil {
+			continue
+		}
+
+		if obj.GetKind() == "Service" {
+			spec, found, errSpec := unstructured.NestedMap(obj.Object, "spec")
+			if errSpec != nil || !found {
+				// Log error but continue processing other objects in the manifest.
+				// This specific object will be marshaled as is, without modification attempts on its spec.
+				_, _ = fmt.Fprintf(ioStreams.ErrOut, "Could not get spec for service %s/%s: %v. "+
+					"Skipping modification for this object.\n", obj.GetNamespace(), obj.GetName(), errSpec)
+			} else {
+				serviceType, typeFound, _ := unstructured.NestedString(spec, "type")
+				if typeFound && serviceType == "LoadBalancer" {
+					_, _ = fmt.Fprintf(ioStreams.Out, "Changing service %s/%s type from LoadBalancer to NodePort\n",
+						obj.GetNamespace(), obj.GetName())
+
+					modifiedSpec, err := configureSpecForNodePort(spec, obj.GetNamespace(), obj.GetName(), ioStreams)
+					if err != nil {
+						return "", fmt.Errorf("failed to configure spec for NodePort for service %s/%s: %w",
+							obj.GetNamespace(), obj.GetName(), err)
+					}
+					obj.Object["spec"] = modifiedSpec // Update the object's spec
+				}
+				// If not LoadBalancer, or type not found, do nothing to this service spec.
+				// The object will be marshaled as is.
+			}
+		}
+
+		modifiedYAMLBytes, err := yaml.Marshal(obj.Object)
+		if err != nil {
+			// If marshaling fails, it's a critical error for this object.
+			return "", fmt.Errorf("failed to marshal object %s/%s to YAML: %w", obj.GetNamespace(), obj.GetName(), err)
+		}
+		if !firstDocument {
+			resultBuilder.WriteString("---\n")
+		}
+		resultBuilder.Write(modifiedYAMLBytes)
+		firstDocument = false
+	}
+	return resultBuilder.String(), nil
+}
+
+func modifyContourServiceForKind(manifestYAML string, ioStreams genericiooptions.IOStreams) (string, error) {
+	_, _ = fmt.Fprintln(ioStreams.Out,
+		"Modifying LoadBalancer services in Contour manifest to NodePort for Kind cluster...")
+	return modifyLoadBalancerServicesToNodePort(manifestYAML, ioStreams)
 }

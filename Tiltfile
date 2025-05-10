@@ -1,5 +1,4 @@
 load('ext://restart_process', 'docker_build_with_restart')
-load('ext://cert_manager', 'deploy_cert_manager')
 
 # Ignore changes in the bin directory
 watch_settings(ignore=['bin'])
@@ -85,8 +84,7 @@ local('make controller-gen kustomize')
 # Initial generation of CRDs/RBAC/webhooks and Go code
 local(manifests() + generate())
 
-# --- Deploy Cert Manager ---
-deploy_cert_manager(version='v1.17.1') # Use appropriate version
+local('go run ./cmd/fcp/main.go install --domain {}'.format(os.getenv('FCP_DOMAIN', '127.0.0.1.sslip.io'))) # Generate all code
 
 # --- CRDs (Assuming common for all apps) ---
 # Apply CRDs first

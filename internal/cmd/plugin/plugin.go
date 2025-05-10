@@ -45,9 +45,7 @@ var (
 
 	ValidPluginFilenamePrefixes = []string{"fcp"}
 
-	ValidSubcommandBinaries = map[string]string{
-		"auth": "pinniped",
-	}
+	ValidSubcommandBinaries = map[string]string{}
 )
 
 func GetDir() string {
@@ -87,9 +85,7 @@ func NewCmdPlugin(streams genericiooptions.IOStreams) *cobra.Command {
 }
 
 type PluginListOptions struct {
-	Verifier PathVerifier
-	NameOnly bool
-
+	Verifier    PathVerifier
 	PluginPaths []string
 
 	genericiooptions.IOStreams
@@ -111,8 +107,6 @@ func NewCmdPluginList(streams genericiooptions.IOStreams) *cobra.Command {
 			cmdutil.CheckErr(o.Run())
 		},
 	}
-
-	cmd.Flags().BoolVar(&o.NameOnly, "name-only", o.NameOnly, "If true, display only the binary name of each plugin, rather than its full path")
 	return cmd
 }
 
@@ -137,11 +131,12 @@ func (o *PluginListOptions) Run() error {
 
 	pluginWarnings := 0
 	for _, pluginPath := range plugins {
-		if o.NameOnly {
-			fmt.Fprintf(o.Out, "%s\n", filepath.Base(pluginPath)) // nolint:errcheck
-		} else {
-			fmt.Fprintf(o.Out, "%s\n", pluginPath) // nolint:errcheck
+		base := filepath.Base(pluginPath)
+		name, ok := ThirdPartyPlugin(base)
+		if ok {
+			base = name
 		}
+		fmt.Fprintf(o.Out, "%s\n", base) // nolint:errcheck
 		if errs := o.Verifier.Verify(pluginPath); len(errs) != 0 {
 			for _, err := range errs {
 				fmt.Fprintf(o.ErrOut, "  - %s\n", err) // nolint:errcheck

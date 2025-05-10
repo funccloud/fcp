@@ -7,56 +7,56 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ApplyManifestFromURL downloads a YAML manifest from a URL and applies its resources.
-func ApplyManifestFromURL(ctx context.Context, k8sClient client.Client, log logr.Logger, url string) error {
+func ApplyManifestFromURL(ctx context.Context, k8sClient client.Client, ioStreams genericiooptions.IOStreams, url string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		log.Error(err, "Error creating HTTP request", "url", url)
+		fmt.Fprintln(ioStreams.ErrOut, "Error creating HTTP request", "url", url, "error", err)
 		return fmt.Errorf("error creating request to download manifest: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Error(err, "Error downloading manifest", "url", url)
+		fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
 		return fmt.Errorf("error downloading manifest from %s: %w", url, err)
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			log.Error(cerr, "Error closing response body for manifest download", "url", url)
+			fmt.Fprintln(ioStreams.ErrOut, "Error closing response body for manifest download", "url", url, "error", cerr)
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("status code %d", resp.StatusCode)
-		log.Error(err, "Error downloading manifest", "url", url)
+		fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
 		return fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
 	}
 
 	manifestBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error(err, "Error reading manifest response body", "url", url)
+		fmt.Fprintln(ioStreams.ErrOut, "Error reading manifest response body", "url", url, "error", err)
 		return fmt.Errorf("error reading manifest: %w", err)
 	}
 
-	err = ApplyManifestYAML(ctx, k8sClient, string(manifestBytes), log)
+	err = ApplyManifestYAML(ctx, k8sClient, string(manifestBytes), ioStreams)
 	if err != nil {
-		log.Error(err, "Error applying manifest", "url", url)
+		fmt.Fprintln(ioStreams.ErrOut, "Error applying manifest", "url", url, "error", err)
 		return fmt.Errorf("error applying manifest from %s: %w", url, err)
 	}
 
-	log.Info("Manifest application finished.", "url", url)
+	fmt.Fprintln(ioStreams.Out, "Manifest application finished.", "url", url)
 	return nil
 }
 
 // ApplyManifestYAML applies a Kubernetes manifest provided as a YAML string.
 // It decodes the YAML and applies each object using Server-Side Apply.
-func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAML string, log logr.Logger) error {
+func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAML string, ioStreams genericiooptions.IOStreams) error {
 	decoder := yaml.NewYAMLToJSONDecoder(strings.NewReader(manifestYAML))
 	for {
 		obj := &unstructured.Unstructured{}
@@ -72,13 +72,13 @@ func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAM
 			continue // Skip empty objects
 		}
 
-		log.Info("Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
+		fmt.Fprintln(ioStreams.Out, "Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
 
 		patch := client.Apply
 		opts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("fcp-manager")}
 		err = k8sClient.Patch(ctx, obj, patch, opts...)
 		if err != nil {
-			log.Error(err, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
+			fmt.Fprintln(ioStreams.ErrOut, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace(), "error", err)
 			return fmt.Errorf("failed to apply object %s/%s: %w", obj.GetKind(), obj.GetName(), err)
 		}
 	}
