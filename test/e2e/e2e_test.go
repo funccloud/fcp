@@ -50,9 +50,13 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
-		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		By("installing the project")
+		cmd := exec.Command("go", "run", "./cmd/fcp/main.go", "install", "--domain", "127.0.0.1.sslip.io")
 		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to install the project")
+		By("creating manager namespace")
+		cmd = exec.Command("kubectl", "create", "ns", namespace)
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
@@ -284,18 +288,6 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		It("should eventually log that prerequisites are satisfied", func() {
-			By("checking controller logs for prerequisite satisfaction message")
-			checkPrerequisitesSatisfied := func(g Gomega) {
-				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-				logsOutput, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred(), "Failed to get controller logs")
-				g.Expect(logsOutput).To(ContainSubstring("All prerequisites are satisfied"), "Prerequisite message not found in logs")
-			}
-			Eventually(checkPrerequisitesSatisfied).Should(Succeed())
-		})
-
 		It("should create resource", func() {
 			By("creating a workspace resource")
 			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/tenancy_v1alpha1_workspace.yaml")

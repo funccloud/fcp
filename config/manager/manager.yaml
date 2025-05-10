@@ -78,7 +78,7 @@ spec:
           httpGet:
             path: /healthz     # Use healthz endpoint for startup check
             port: 8081
-          initialDelaySeconds: 150 
+          initialDelaySeconds: 10 
           periodSeconds: 10      
           failureThreshold: 5   
         livenessProbe:
