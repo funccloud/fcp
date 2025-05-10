@@ -17,40 +17,40 @@ import (
 func ApplyManifestFromURL(ctx context.Context, k8sClient client.Client, ioStreams genericiooptions.IOStreams, url string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error creating HTTP request", "url", url, "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error creating HTTP request", "url", url, "error", err)
 		return fmt.Errorf("error creating request to download manifest: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
 		return fmt.Errorf("error downloading manifest from %s: %w", url, err)
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			fmt.Fprintln(ioStreams.ErrOut, "Error closing response body for manifest download", "url", url, "error", cerr)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error closing response body for manifest download", "url", url, "error", cerr)
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("status code %d", resp.StatusCode)
-		fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
 		return fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
 	}
 
 	manifestBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error reading manifest response body", "url", url, "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error reading manifest response body", "url", url, "error", err)
 		return fmt.Errorf("error reading manifest: %w", err)
 	}
 
 	err = ApplyManifestYAML(ctx, k8sClient, string(manifestBytes), ioStreams)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error applying manifest", "url", url, "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error applying manifest", "url", url, "error", err)
 		return fmt.Errorf("error applying manifest from %s: %w", url, err)
 	}
 
-	fmt.Fprintln(ioStreams.Out, "Manifest application finished.", "url", url)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Manifest application finished.", "url", url)
 	return nil
 }
 
@@ -72,13 +72,13 @@ func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAM
 			continue // Skip empty objects
 		}
 
-		fmt.Fprintln(ioStreams.Out, "Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
+		_, _ = fmt.Fprintln(ioStreams.Out, "Applying object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
 
 		patch := client.Apply
 		opts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("fcp-manager")}
 		err = k8sClient.Patch(ctx, obj, patch, opts...)
 		if err != nil {
-			fmt.Fprintln(ioStreams.ErrOut, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace(), "error", err)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace(), "error", err)
 			return fmt.Errorf("failed to apply object %s/%s: %w", obj.GetKind(), obj.GetName(), err)
 		}
 	}
