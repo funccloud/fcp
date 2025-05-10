@@ -24,41 +24,41 @@ const (
 
 // InstallCertManager attempts to install cert-manager by downloading its CRDs and main manifests and applying them.
 func InstallCertManager(ctx context.Context, k8sClient client.Client, ioStreams genericiooptions.IOStreams) error {
-	fmt.Fprintln(ioStreams.Out, "Cert-manager not found, attempting installation...", "version", CertManagerVersion)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager not found, attempting installation...", "version", CertManagerVersion)
 
 	// 1. Install CRDs
 	crdsURL := fmt.Sprintf(CertManagerCRDsURLTemplate, CertManagerVersion)
-	fmt.Fprintln(ioStreams.Out, "Downloading cert-manager CRDs manifest", "url", crdsURL)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Downloading cert-manager CRDs manifest", "url", crdsURL)
 	if err := yamlutil.ApplyManifestFromURL(ctx, k8sClient, ioStreams, crdsURL); err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Failed to apply cert-manager CRDs manifest", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply cert-manager CRDs manifest", "error", err)
 		return fmt.Errorf("failed to apply cert-manager CRDs from %s: %w", crdsURL, err)
 	}
-	fmt.Fprintln(ioStreams.Out, "Cert-manager CRDs manifest applied successfully.")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager CRDs manifest applied successfully.")
 
 	// Brief pause to allow CRDs to be established in the API server
-	fmt.Fprintln(ioStreams.Out, "Waiting briefly for CRDs to be established...")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting briefly for CRDs to be established...")
 	time.Sleep(10 * time.Second)
 
 	// 2. Install main cert-manager components
 	manifestURL := fmt.Sprintf(CertManagerManifestURLTemplate, CertManagerVersion)
-	fmt.Fprintln(ioStreams.Out, "Downloading main cert-manager manifest", "url", manifestURL)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Downloading main cert-manager manifest", "url", manifestURL)
 	if err := yamlutil.ApplyManifestFromURL(ctx, k8sClient, ioStreams, manifestURL); err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Failed to apply main cert-manager manifest", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply main cert-manager manifest", "error", err)
 		return fmt.Errorf("failed to apply main cert-manager manifest from %s: %w", manifestURL, err)
 	}
-	fmt.Fprintln(ioStreams.Out, "Main cert-manager manifest applied successfully.")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Main cert-manager manifest applied successfully.")
 
 	// 3. Wait for deployments to become ready
-	fmt.Fprintln(ioStreams.Out, "Waiting for cert-manager deployments to become ready...")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for cert-manager deployments to become ready...")
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute) // 5-minute timeout
 	defer cancel()
 	err := waitForCertManagerDeployments(waitCtx, k8sClient, ioStreams)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Cert-manager deployments did not become ready in time", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Cert-manager deployments did not become ready in time", "error", err)
 		return fmt.Errorf("cert-manager deployments did not become ready: %w", err)
 	}
 
-	fmt.Fprintln(ioStreams.Out, "Cert-manager installation completed successfully.")
+	_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager installation completed successfully.")
 	return nil
 }
 
@@ -67,20 +67,20 @@ func waitForCertManagerDeployments(ctx context.Context, k8sClient client.Client,
 	deployments := []string{CertManagerDeployment, "cert-manager-webhook", "cert-manager-cainjector"}
 
 	for _, depName := range deployments {
-		fmt.Fprintln(ioStreams.Out, "Waiting for deployment", "deployment", depName, "namespace", CertManagerNamespace)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for deployment", "deployment", depName, "namespace", CertManagerNamespace)
 		err := wait.PollUntilContextCancel(ctx, 5*time.Second, true, func(ctx context.Context) (bool, error) {
 			ready, err := isDeploymentReady(ctx, k8sClient, CertManagerNamespace, depName)
 			if err != nil {
 				// If not found yet, keep waiting
 				if apierrors.IsNotFound(err) {
-					fmt.Fprintln(ioStreams.Out, "Deployment not found yet, waiting...", "deployment", depName) // V(1) equivalent
+					_, _ = fmt.Fprintln(ioStreams.Out, "Deployment not found yet, waiting...", "deployment", depName) // V(1) equivalent
 					return false, nil
 				}
-				fmt.Fprintln(ioStreams.ErrOut, "Error checking deployment status", "deployment", depName, "error", err)
+				_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking deployment status", "deployment", depName, "error", err)
 				return false, err // Real error, stop waiting
 			}
 			if ready {
-				fmt.Fprintln(ioStreams.Out, "Deployment is ready", "deployment", depName)
+				_, _ = fmt.Fprintln(ioStreams.Out, "Deployment is ready", "deployment", depName)
 			}
 			return ready, nil
 		})
