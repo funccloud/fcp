@@ -30,29 +30,29 @@ func CheckOrInstallVersion(ctx context.Context, k8sClient client.Client, ioStrea
 		Name:      CertManagerDeployment,
 	}
 
-	fmt.Fprintln(ioStreams.Out, "Checking cert-manager installation...",
+	_, _ = fmt.Fprintln(ioStreams.Out, "Checking cert-manager installation...",
 		"namespace", CertManagerNamespace, "deployment", CertManagerDeployment)
 
 	err := k8sClient.Get(ctx, namespacedName, deployment)
 	if err != nil {
 		// Modified condition: Check for IsNotFound OR IsNoMatchError
 		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
-			fmt.Fprintln(ioStreams.Out, "Cert-manager deployment or required CRDs not found. Attempting installation...")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager deployment or required CRDs not found. Attempting installation...")
 			installErr := InstallCertManager(ctx, k8sClient, ioStreams) // Call the installation function
 			if installErr != nil {
-				fmt.Fprintln(ioStreams.ErrOut, "Failed to install cert-manager", "error", installErr)
+				_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to install cert-manager", "error", installErr)
 				return fmt.Errorf("failed to install cert-manager: %w", installErr)
 			}
-			fmt.Fprintln(ioStreams.Out, "Cert-manager installed successfully after check.")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager installed successfully after check.")
 			return nil // Successful installation
 		}
 		// Another error occurred while fetching the deployment
-		fmt.Fprintln(ioStreams.ErrOut, "Error fetching cert-manager deployment", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error fetching cert-manager deployment", "error", err)
 		return fmt.Errorf("error checking cert-manager: %w", err)
 	}
 
 	// Cert-manager is already installed, check the version (log only)
-	fmt.Fprintln(ioStreams.Out, "Cert-manager deployment found.", "namespace", CertManagerNamespace, "deployment", CertManagerDeployment)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager deployment found.", "namespace", CertManagerNamespace, "deployment", CertManagerDeployment)
 
 	// Try to extract the version from the first container's image (usually the controller)
 	foundVersion := ""
@@ -69,14 +69,14 @@ func CheckOrInstallVersion(ctx context.Context, k8sClient client.Client, ioStrea
 	expectedVersionClean := strings.TrimPrefix(CertManagerVersion, "v")
 
 	if foundVersion == "" {
-		fmt.Fprintln(ioStreams.Out, "Could not determine cert-manager version from container image.",
+		_, _ = fmt.Fprintln(ioStreams.Out, "Could not determine cert-manager version from container image.",
 			"image", deployment.Spec.Template.Spec.Containers[0].Image,
 			"reason", "Please check installation manually.")
 	} else if foundVersion != expectedVersionClean {
-		fmt.Fprintln(ioStreams.Out, "WARNING: Found cert-manager version differs from expected.",
+		_, _ = fmt.Fprintln(ioStreams.Out, "WARNING: Found cert-manager version differs from expected.",
 			"found", "v"+foundVersion, "expected", CertManagerVersion)
 	} else {
-		fmt.Fprintln(ioStreams.Out, "Cert-manager version is correct.", "version", CertManagerVersion)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Cert-manager version is correct.", "version", CertManagerVersion)
 	}
 
 	return nil // Check passed (cert-manager was already installed)

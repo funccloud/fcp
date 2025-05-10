@@ -58,12 +58,14 @@ func (o *Options) Validate() error {
 	}
 	return nil
 }
+
 func (o *Options) Run(ctx context.Context) error {
-	fmt.Fprintf(o.Out, "Installing FCP components with domain %s\n", o.Domain)
+	_, _ = fmt.Fprintf(o.Out, "Installing FCP components with domain %s\n", o.Domain)
 	err := resource.CheckOrInstallVersion(ctx, o.Domain, o.Client, o.IOStreams)
 	if err != nil {
-		fmt.Fprintf(o.ErrOut, "Error installing FCP components: %v\n", err)
+		_, _ = fmt.Fprintf(o.ErrOut, "Error installing FCP components: %v\n", err)
+		return err
 	}
-	fmt.Fprintf(o.Out, "FCP components installed successfully\n")
+	_, _ = fmt.Fprintf(o.Out, "FCP components installed successfully\n")
 	return nil
 }
