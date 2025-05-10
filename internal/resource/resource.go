@@ -14,31 +14,31 @@ import (
 func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.Client, ioStreams genericiooptions.IOStreams) error {
 	onKind, err := kind.IsKindCluster(ctx, k8sClient)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error checking for kindnet daemonset", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking for kindnet daemonset", "error", err)
 		// Decide if we should proceed or return; for now, assume not Kind if error occurs
 		onKind = false
 	}
 	if onKind {
-		fmt.Fprintln(ioStreams.Out, "Detected Kind cluster via kindnet daemonset. Recommended for dev environment.")
+		_, _ = fmt.Fprintln(ioStreams.Out, "Detected Kind cluster via kindnet daemonset. Recommended for dev environment.")
 		if domain == "" {
-			fmt.Fprintln(ioStreams.Out, "Setting domain to 127.0.0.1.sslip.io")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Setting domain to 127.0.0.1.sslip.io")
 			domain = "127.0.0.1.sslip.io"
 		}
 	} else {
-		fmt.Fprintln(ioStreams.Out, "Did not detect Kind cluster (kindnet daemonset not found or error occurred).")
+		_, _ = fmt.Fprintln(ioStreams.Out, "Did not detect Kind cluster (kindnet daemonset not found or error occurred).")
 	}
 
 	// Check if cert-manager is installed
 	err = certmanager.CheckOrInstallVersion(ctx, k8sClient, ioStreams)
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing cert-manager", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing cert-manager", "error", err)
 		return err
 	}
 
 	// Check if Knative is installed, passing the onKind flag
 	err = knative.CheckOrInstallVersion(ctx, domain, k8sClient, ioStreams, onKind) // Pass onKind here
 	if err != nil {
-		fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Knative", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Knative", "error", err)
 		return err
 	}
 

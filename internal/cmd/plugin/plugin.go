@@ -155,7 +155,7 @@ func (o *PluginListOptions) Run() error {
 	if len(pluginErrors) > 0 {
 		errs := bytes.NewBuffer(nil)
 		for _, e := range pluginErrors {
-			fmt.Fprintln(errs, e)
+			_, _ = fmt.Fprintln(errs, e)
 		}
 		return fmt.Errorf("%s", errs.String())
 	}
