@@ -38,7 +38,7 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		Kind:    "KnativeServing",
 	})
 
-	fmt.Fprintln(ioStreams.Out, "Checking KnativeServing CR status...", "namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Checking KnativeServing CR status...", "namespace", knativeServingNN.Namespace, "name", knativeServingNN.Name)
 	err := k8sClient.Get(ctx, knativeServingNN, ks)
 
 	needsInstall := false
@@ -57,32 +57,32 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 
 				if typeFound && statusFound && condType == "Ready" {
 					if condStatus == string(metav1.ConditionTrue) {
-						fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) is installed and Ready.")
+						_, _ = fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) is installed and Ready.")
 						scheme.AddKnative() // Add Knative scheme to the runtime scheme
 						return nil          // Already installed and ready
 					}
 					// Found Ready condition, but it's not True
-					fmt.Fprintln(ioStreams.Out, "KnativeServing CR found but not Ready.", "status", condStatus)
+					_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing CR found but not Ready.", "status", condStatus)
 					isReady = false // Explicitly mark as not ready if condition found but not True
 					break           // No need to check other conditions if Ready is found
 				}
 			}
 			// If Ready condition was found but wasn't True
 			if !isReady {
-				fmt.Fprintln(ioStreams.Out, "KnativeServing CR Ready condition is not True. Will attempt installation/reconciliation.")
+				_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing CR Ready condition is not True. Will attempt installation/reconciliation.")
 				needsInstall = true
 			}
 		} else {
-			fmt.Fprintln(ioStreams.Out, "KnativeServing CR found but status.conditions not found. Will attempt installation/reconciliation.")
+			_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing CR found but status.conditions not found. Will attempt installation/reconciliation.")
 			needsInstall = true
 		}
 	} else if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) { // Modified condition: Check for IsNotFound OR IsNoMatchError
 		// CR or CRD not found.
-		fmt.Fprintln(ioStreams.Out, "Knative Serving CRD or CR not found. Attempting installation...")
+		_, _ = fmt.Fprintln(ioStreams.Out, "Knative Serving CRD or CR not found. Attempting installation...")
 		needsInstall = true
 	} else {
 		// Another error occurred while fetching the KnativeServing CR
-		fmt.Fprintln(ioStreams.ErrOut, "Error checking KnativeServing CR", "error", err)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking KnativeServing CR", "error", err)
 		return fmt.Errorf("error checking KnativeServing CR: %w", err)
 	}
 
@@ -91,29 +91,29 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		var issuerYAML string
 		var issuerName string
 		if isKind {
-			fmt.Fprintln(ioStreams.Out, "Applying Let's Encrypt staging issuer for Kind cluster...")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Applying Let's Encrypt staging issuer for Kind cluster...")
 			issuerYAML = leStagingIssuerYAML
 			issuerName = "le-staging-issuer" // Assuming name from YAML
 		} else {
-			fmt.Fprintln(ioStreams.Out, "Applying Let's Encrypt production issuer...")
+			_, _ = fmt.Fprintln(ioStreams.Out, "Applying Let's Encrypt production issuer...")
 			issuerYAML = leProdIssuerYAML
 			issuerName = "le-prod-issuer" // Assuming name from YAML
 		}
 
 		applyErr := yamlutil.ApplyManifestYAML(ctx, k8sClient, issuerYAML, ioStreams)
 		if applyErr != nil {
-			fmt.Fprintln(ioStreams.ErrOut, "Failed to apply Let's Encrypt issuer", "issuer", issuerName, "error", applyErr)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply Let's Encrypt issuer", "issuer", issuerName, "error", applyErr)
 			return fmt.Errorf("failed to apply Let's Encrypt issuer %s: %w", issuerName, applyErr)
 		}
-		fmt.Fprintln(ioStreams.Out, "Successfully applied Let's Encrypt issuer", "issuer", issuerName)
+		_, _ = fmt.Fprintln(ioStreams.Out, "Successfully applied Let's Encrypt issuer", "issuer", issuerName)
 
-		fmt.Fprintln(ioStreams.Out, "Attempting Knative Serving installation/reconciliation...")
+		_, _ = fmt.Fprintln(ioStreams.Out, "Attempting Knative Serving installation/reconciliation...")
 		installErr := InstallKnative(ctx, domain, issuerName, isKind, k8sClient, ioStreams)
 		if installErr != nil {
-			fmt.Fprintln(ioStreams.ErrOut, "Failed to install/reconcile Knative Serving using Operator", "error", installErr)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to install/reconcile Knative Serving using Operator", "error", installErr)
 			return fmt.Errorf("failed to install/reconcile Knative Serving using Operator: %w", installErr)
 		}
-		fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) installation/reconciliation process completed successfully.")
+		_, _ = fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) installation/reconciliation process completed successfully.")
 	}
 
 	scheme.AddKnative() // Add Knative scheme to the runtime scheme (safe to call multiple times)

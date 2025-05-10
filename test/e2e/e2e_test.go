@@ -51,7 +51,7 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deploying the controller.
 	BeforeAll(func() {
 		By("installing the project")
-		cmd := exec.Command("go", "run", "./cmd/fcp/main.go", "install")
+		cmd := exec.Command("go", "run", "./cmd/fcp/main.go", "install", "--domain", "127.0.0.1.sslip.io")
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install the project")
 		By("creating manager namespace")
