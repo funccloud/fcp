@@ -20,7 +20,7 @@ require (
 	k8s.io/kubectl v0.33.0
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	knative.dev/networking v0.0.0-20250424014624-16635c6d8dcc
-	knative.dev/operator v0.45.0
+	knative.dev/operator v0.45.1
 	knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3
 	knative.dev/serving v0.45.0
 	sigs.k8s.io/controller-runtime v0.20.4

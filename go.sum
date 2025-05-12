@@ -333,8 +333,8 @@ knative.dev/caching v0.0.0-20250415164313-8f20a1163dbf h1:qQnKB6mx+beHzsoKU8aKrR
 knative.dev/caching v0.0.0-20250415164313-8f20a1163dbf/go.mod h1:q8ma7YxJ8Dofr+5kf3qR72A/7Zxl9uqQlOdMwNgCXY4=
 knative.dev/networking v0.0.0-20250424014624-16635c6d8dcc h1:Lvl3IInLMABBBfaOHViMD3synkX5aoTt0b9tjBGdCMc=
 knative.dev/networking v0.0.0-20250424014624-16635c6d8dcc/go.mod h1:Y6OMRz/12RC8fzVa3gAB6K8BR415xbF4z35IAbdMHFc=
-knative.dev/operator v0.45.0 h1:bTrcspRM6qkOoXaNhD4pFrY3mRLOJGxx9D/DLhDdfsE=
-knative.dev/operator v0.45.0/go.mod h1:BnZRrJPOOYJCUODJvaFZYR3SwoGjXayAXcuMmcVQLQQ=
+knative.dev/operator v0.45.1 h1:DkViisLle8GI8KAjP19PT5icHy+xgKltek51eCN67r0=
+knative.dev/operator v0.45.1/go.mod h1:7NyZjhmEoCNUlGj77vbzLAUNT5NTxUYIfNoyQbqfpdw=
 knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3 h1:aMTq7kbVJQi+yBC8FZxJ+/EYgRvbn/n4d5kECCyW6nc=
 knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3/go.mod h1:aW3uFF4bZeHMiNDDxROPoFsPam9OiXHnIV2U/FGPXWc=
 knative.dev/serving v0.45.0 h1:+eOEwSE5+NmhQUUfARHGdSI1gwavddiPMKjl4+sHCjE=
