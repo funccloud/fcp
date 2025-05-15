@@ -46,7 +46,7 @@ var (
 	ValidPluginFilenamePrefixes = []string{"fcp"}
 
 	ValidSubcommandBinaries = map[string]string{
-		"auth": "pinniped",
+		"helm": "helm",
 	}
 )
 
