@@ -12,7 +12,7 @@ spec:
     - port: 6443
       protocol: TCP
       targetPort: 6443 
-      nodePort: 36443
+      nodePort: 32443
   selector:
     control-plane: controller-manager
     app.kubernetes.io/name: fcp
