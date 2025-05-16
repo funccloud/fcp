@@ -81,7 +81,7 @@ type CAFromFile struct {
 	CAFile string
 }
 
-func (caFromFile CAFromFile) CurrentCABundleContent() []byte {
+func (caFromFile *CAFromFile) CurrentCABundleContent() []byte {
 	res, _ := os.ReadFile(caFromFile.CAFile) // nolint:errcheck
 	return res
 }
@@ -95,10 +95,12 @@ func New(ctx context.Context, restConfig *rest.Config,
 	config *Config) (*Proxy, error) {
 
 	// load the CA from the file listed in the options
-	caFromFile := CAFromFile{
-		CAFile: oidcOptions.CAFile,
+	var caFromFile *CAFromFile
+	if oidcOptions.CAFile != "" {
+		caFromFile = &CAFromFile{
+			CAFile: oidcOptions.CAFile,
+		}
 	}
-
 	// setup static JWT Auhenticator
 	jwtConfig := apiserver.JWTAuthenticator{
 		Issuer: apiserver.Issuer{
