@@ -38,6 +38,8 @@ var (
 	errNoImpersonationConfig = errors.New("No impersonation configuration in context")
 )
 
+var _ oidc.CAContentProvider = &CAFromFile{}
+
 type OIDCAuthenticationOptions struct {
 	CAFile         string
 	ClientID       string
@@ -82,7 +84,19 @@ type CAFromFile struct {
 }
 
 func (caFromFile *CAFromFile) CurrentCABundleContent() []byte {
-	res, _ := os.ReadFile(caFromFile.CAFile) // nolint:errcheck
+	if caFromFile == nil {
+		klog.Warningf("CurrentCABundleContent called on nil CAFromFile receiver")
+		return nil
+	}
+	if caFromFile.CAFile == "" {
+		klog.Warningf("CurrentCABundleContent called with empty CAFile path in CAFromFile struct")
+		return nil
+	}
+	res, err := os.ReadFile(caFromFile.CAFile)
+	if err != nil {
+		klog.Errorf("Failed to read CA file %q: %v", caFromFile.CAFile, err)
+		return nil
+	}
 	return res
 }
 
@@ -102,7 +116,6 @@ func New(ctx context.Context, restConfig *rest.Config,
 			CAFile: oidcOptions.CAFile,
 		}
 		caStr = string(caFromFile.CurrentCABundleContent())
-		fmt.Println("CA file loaded from file")
 	}
 	// setup static JWT Auhenticator
 	jwtConfig := apiserver.JWTAuthenticator{
@@ -123,7 +136,6 @@ func New(ctx context.Context, restConfig *rest.Config,
 			},
 		},
 	}
-	fmt.Println(">>>>JWT Authenticator created", caFromFile)
 	// generate tokenAuther from oidc config
 	tokenAuther, err := oidc.New(ctx, oidc.Options{
 		CAContentProvider:    caFromFile,
