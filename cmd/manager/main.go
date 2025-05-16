@@ -19,19 +19,28 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	tenancycontroller "go.funccloud.dev/fcp/internal/controller/tenancy"
 	workloadcontroller "go.funccloud.dev/fcp/internal/controller/workload"
+	"go.funccloud.dev/fcp/internal/proxy"
+	"go.funccloud.dev/fcp/internal/proxy/subjectaccessreview"
+	"go.funccloud.dev/fcp/internal/proxy/tokenreview"
 	"go.funccloud.dev/fcp/internal/scheme"
 	webhooktenancyv1alpha1 "go.funccloud.dev/fcp/internal/webhook/tenancy/v1alpha1"
 	webhookworkloadv1alpha1 "go.funccloud.dev/fcp/internal/webhook/workload/v1alpha1"
+	"k8s.io/apiserver/pkg/server"
+	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -57,6 +66,16 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var tokenPassthrough bool
+	var tokenPassthroughAudiences string
+	var disableImpersonation bool
+	var oidcIssuerURL string
+	var oidcClientID string
+	var oidcUsernameClaim string
+	var oidcUsernamePrefix string
+	var oidcGroupsClaim string
+	var oidcGroupsPrefix string
+	var oidcCAFile string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -75,6 +94,26 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&tokenPassthrough, "token-passthrough", false,
+		"If set, the token will be passed through to the proxy server.")
+	flag.StringVar(&tokenPassthroughAudiences, "token-passthrough-audiences", "",
+		"The audiences to pass through the token. This is only used if --token-passthrough is set.")
+	flag.BoolVar(&disableImpersonation, "disable-impersonation", false,
+		"If set, impersonation will be disabled.")
+	flag.StringVar(&oidcIssuerURL, "oidc-issuer-url", "",
+		"The issuer URL for OIDC authentication.")
+	flag.StringVar(&oidcClientID, "oidc-client-id", "",
+		"The client ID for OIDC authentication.")
+	flag.StringVar(&oidcUsernameClaim, "oidc-username-claim", "email",
+		"The claim to use for the username in OIDC authentication.")
+	flag.StringVar(&oidcUsernamePrefix, "oidc-username-prefix", "",
+		"The prefix to use for the username in OIDC authentication.")
+	flag.StringVar(&oidcGroupsClaim, "oidc-groups-claim", "groups",
+		"The claim to use for the groups in OIDC authentication.")
+	flag.StringVar(&oidcGroupsPrefix, "oidc-groups-prefix", "",
+		"The prefix to use for the groups in OIDC authentication.")
+	flag.StringVar(&oidcCAFile, "oidc-ca-file", "",
+		"The CA file to use for OIDC authentication.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -83,9 +122,15 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	setupLog.Info("Checking prerequisites...")
 	k8sConfig := ctrl.GetConfigOrDie()
 	ctx := ctrl.SetupSignalHandler()
+	k8sClient, err := client.New(k8sConfig, client.Options{
+		Scheme: scheme.Get(),
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to create client")
+		os.Exit(1)
+	}
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -253,7 +298,61 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-
+	setupLog.Info("Setup proxy server")
+	var tokenReviewer *tokenreview.TokenReview
+	if tokenPassthrough {
+		tokenReviewer = tokenreview.New(k8sClient, strings.Fields(tokenPassthroughAudiences))
+	}
+	sOpts := &apiserveroptions.SecureServingOptions{
+		BindAddress: net.ParseIP("0.0.0.0"),
+		BindPort:    6443,
+		Required:    true,
+		ServerCert: apiserveroptions.GeneratableKeyCert{
+			PairName:      "fcp-apiserver-proxy",
+			CertDirectory: "/var/run/kubernetes",
+		},
+	}
+	secureServingInfo := new(server.SecureServingInfo)
+	if err := sOpts.ApplyTo(&secureServingInfo); err != nil {
+		setupLog.Error(err, "unable to apply secure serving options")
+		os.Exit(1)
+	}
+	proxyConfig := &proxy.Config{
+		TokenReview:          tokenPassthrough,
+		FlushInterval:        50 * time.Millisecond,
+		DisableImpersonation: disableImpersonation,
+		ExternalAddress:      sOpts.BindAddress.String(),
+	}
+	oidcOpts := &proxy.OIDCAuthenticationOptions{
+		IssuerURL:      oidcIssuerURL,
+		ClientID:       oidcClientID,
+		UsernameClaim:  oidcUsernameClaim,
+		UsernamePrefix: oidcUsernamePrefix,
+		GroupsClaim:    oidcGroupsClaim,
+		GroupsPrefix:   oidcGroupsPrefix,
+		SigningAlgs:    []string{"RS256"},
+		CAFile:         oidcCAFile,
+	}
+	subectAccessReviewer := subjectaccessreview.New(k8sClient)
+	var p *proxy.Proxy
+	p, err = proxy.New(
+		ctx,
+		k8sConfig,
+		oidcOpts,
+		apiserveroptions.NewAuditOptions(),
+		tokenReviewer,
+		subectAccessReviewer,
+		secureServingInfo,
+		proxyConfig,
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create proxy server")
+		os.Exit(1)
+	}
+	if err := mgr.Add(p); err != nil {
+		setupLog.Error(err, "unable to add proxy server to manager")
+		os.Exit(1)
+	}
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")

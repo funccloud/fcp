@@ -65,9 +65,6 @@ spec:
           - --health-probe-bind-address=:8081
         image: manager:latest
         name: manager
-        env:
-          - name: DEFAULT_DOMAIN
-            value: ""
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
@@ -95,8 +92,8 @@ spec:
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 1000m
+            memory: 512Mi
           requests:
             cpu: 10m
             memory: 128Mi
