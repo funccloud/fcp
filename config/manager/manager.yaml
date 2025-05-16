@@ -63,6 +63,8 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --oidc-issuer-url
+          - https://accounts.google.com
         image: manager:latest
         name: manager
         ports: []
