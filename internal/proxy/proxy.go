@@ -96,17 +96,19 @@ func New(ctx context.Context, restConfig *rest.Config,
 
 	// load the CA from the file listed in the options
 	var caFromFile *CAFromFile
+	var caStr string
 	if oidcOptions.CAFile != "" {
 		caFromFile = &CAFromFile{
 			CAFile: oidcOptions.CAFile,
 		}
+		caStr = string(caFromFile.CurrentCABundleContent())
 	}
 	// setup static JWT Auhenticator
 	jwtConfig := apiserver.JWTAuthenticator{
 		Issuer: apiserver.Issuer{
 			URL:                  oidcOptions.IssuerURL,
 			Audiences:            []string{oidcOptions.ClientID},
-			CertificateAuthority: string(caFromFile.CurrentCABundleContent()),
+			CertificateAuthority: caStr,
 		},
 
 		ClaimMappings: apiserver.ClaimMappings{
