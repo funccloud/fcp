@@ -102,6 +102,7 @@ func New(ctx context.Context, restConfig *rest.Config,
 			CAFile: oidcOptions.CAFile,
 		}
 		caStr = string(caFromFile.CurrentCABundleContent())
+		fmt.Println("CA file loaded from file")
 	}
 	// setup static JWT Auhenticator
 	jwtConfig := apiserver.JWTAuthenticator{
@@ -122,7 +123,7 @@ func New(ctx context.Context, restConfig *rest.Config,
 			},
 		},
 	}
-
+	fmt.Println(">>>>JWT Authenticator created", caFromFile)
 	// generate tokenAuther from oidc config
 	tokenAuther, err := oidc.New(ctx, oidc.Options{
 		CAContentProvider:    caFromFile,
