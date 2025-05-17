@@ -273,6 +273,9 @@ func New(lifecycleCtx context.Context, opts Options) (AuthenticatorTokenWithHeal
 	}
 	fmt.Println(">>>>>>>>>", opts.CAContentProvider)
 	fmt.Printf(">>>>>>>>>%T\n", opts.CAContentProvider)
+	fmt.Printf(">>>>>>>>>%#v\n", opts.CAContentProvider)
+	fmt.Println(">>>>>>>>>", opts.Client)
+	fmt.Printf(">>>>>>>>>%#v\n", opts.CAContentProvider != nil)
 
 	if opts.Client != nil && opts.CAContentProvider != nil {
 		return nil, fmt.Errorf("oidc: Client and CAContentProvider are mutually exclusive")
@@ -284,6 +287,7 @@ func New(lifecycleCtx context.Context, opts Options) (AuthenticatorTokenWithHeal
 		var roots *x509.CertPool
 		var err error
 		if opts.CAContentProvider != nil {
+			fmt.Println(">>>>OIDC: Using CA content provider")
 			// TODO(enj): make this reload CA data dynamically
 			roots, err = certutil.NewPoolFromBytes(opts.CAContentProvider.CurrentCABundleContent())
 			if err != nil {
