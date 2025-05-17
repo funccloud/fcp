@@ -9,7 +9,6 @@ import (
 	"k8s.io/apiserver/pkg/server"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/apiserver/pkg/server/options"
-	"k8s.io/component-base/version"
 )
 
 type Audit struct {
@@ -34,10 +33,6 @@ func New(opts *options.AuditOptions, externalAddress string, secureServingInfo *
 
 	// We do not support dynamic auditing, so leave nil
 	if err := opts.ApplyTo(serverConfig); err != nil {
-		return nil, err
-	}
-	err := version.SetDynamicVersion("1.0.0")
-	if err != nil {
 		return nil, err
 	}
 	completed := serverConfig.Complete(nil)
