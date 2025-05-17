@@ -11,6 +11,3 @@ nodes:
   - containerPort: 31443
     hostPort: 443
     listenAddress: "0.0.0.0"
-  - containerPort: 32443
-    hostPort: 6443
-    listenAddress: "0.0.0.0"
