@@ -100,9 +100,9 @@ func main() {
 		"The audiences to pass through the token. This is only used if --token-passthrough is set.")
 	flag.BoolVar(&disableImpersonation, "disable-impersonation", false,
 		"If set, impersonation will be disabled.")
-	flag.StringVar(&oidcIssuerURL, "oidc-issuer-url", "",
+	flag.StringVar(&oidcIssuerURL, "oidc-issuer-url", "https://accounts.google.com",
 		"The issuer URL for OIDC authentication.")
-	flag.StringVar(&oidcClientID, "oidc-client-id", "",
+	flag.StringVar(&oidcClientID, "oidc-client-id", "test-client",
 		"The client ID for OIDC authentication.")
 	flag.StringVar(&oidcUsernameClaim, "oidc-username-claim", "email",
 		"The claim to use for the username in OIDC authentication.")
