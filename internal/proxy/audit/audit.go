@@ -9,7 +9,7 @@ import (
 	"k8s.io/apiserver/pkg/server"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/apiserver/pkg/server/options"
-	"k8s.io/component-base/version"
+	"k8s.io/component-base/compatibility"
 )
 
 type Audit struct {
@@ -36,10 +36,7 @@ func New(opts *options.AuditOptions, externalAddress string, secureServingInfo *
 	if err := opts.ApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
-	err := version.SetDynamicVersion("v0.0.0-master+$Format:%H$") // How to set this?
-	if err != nil {
-		return nil, err
-	}
+	serverConfig.EffectiveVersion = compatibility.NewEffectiveVersionFromString("1.0.31", "", "")
 	completed := serverConfig.Complete(nil)
 
 	return &Audit{
