@@ -36,7 +36,7 @@ func New(opts *options.AuditOptions, externalAddress string, secureServingInfo *
 	if err := opts.ApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
-	serverConfig.EffectiveVersion = compatibility.NewEffectiveVersionFromString("1.0.31", "", "")
+	serverConfig.EffectiveVersion = compatibility.NewEffectiveVersionFromString("", "", "")
 	completed := serverConfig.Complete(nil)
 
 	return &Audit{
