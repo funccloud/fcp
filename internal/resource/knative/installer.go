@@ -20,10 +20,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	k8syaml "k8s.io/apimachinery/pkg/util/yaml" // Standard K8s YAML decoder
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml" // For marshalling objects back to YAML
+	"sigs.k8s.io/yaml"
 )
 
 //go:embed knative.yaml
