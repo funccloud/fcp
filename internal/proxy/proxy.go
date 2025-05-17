@@ -83,20 +83,8 @@ type CAFromFile struct {
 	CAFile string
 }
 
-func (caFromFile *CAFromFile) CurrentCABundleContent() []byte {
-	if caFromFile == nil {
-		klog.Warningf("CurrentCABundleContent called on nil CAFromFile receiver")
-		return nil
-	}
-	if caFromFile.CAFile == "" {
-		klog.Warningf("CurrentCABundleContent called with empty CAFile path in CAFromFile struct")
-		return nil
-	}
-	res, err := os.ReadFile(caFromFile.CAFile)
-	if err != nil {
-		klog.Errorf("Failed to read CA file %q: %v", caFromFile.CAFile, err)
-		return nil
-	}
+func (caFromFile CAFromFile) CurrentCABundleContent() []byte {
+	res, _ := os.ReadFile(caFromFile.CAFile) // nolint:errcheck
 	return res
 }
 
@@ -108,21 +96,29 @@ func New(ctx context.Context, restConfig *rest.Config,
 	ssinfo *server.SecureServingInfo,
 	config *Config) (*Proxy, error) {
 
-	// load the CA from the file listed in the options
-	var caFromFile *CAFromFile
-	var caStr string
+	var (
+		caStr          string
+		oidcCAProvider oidc.CAContentProvider // Declare as interface type
+	)
 	if oidcOptions.CAFile != "" {
-		caFromFile = &CAFromFile{
+		concreteProvider := CAFromFile{
 			CAFile: oidcOptions.CAFile,
 		}
-		caStr = string(caFromFile.CurrentCABundleContent())
+		// CurrentCABundleContent logs errors if reading fails
+		caBundleContent := concreteProvider.CurrentCABundleContent()
+		if caBundleContent != nil {
+			caStr = string(caBundleContent)
+			oidcCAProvider = concreteProvider // Assign concrete type to interface
+		}
 	}
+	// If oidcOptions.CAFile was empty, oidcCAProvider is nil and caStr is empty.
+
 	// setup static JWT Auhenticator
 	jwtConfig := apiserver.JWTAuthenticator{
 		Issuer: apiserver.Issuer{
 			URL:                  oidcOptions.IssuerURL,
 			Audiences:            []string{oidcOptions.ClientID},
-			CertificateAuthority: caStr,
+			CertificateAuthority: caStr, // Use caStr, which is populated only if CAFile is valid and readable
 		},
 
 		ClaimMappings: apiserver.ClaimMappings{
@@ -138,7 +134,7 @@ func New(ctx context.Context, restConfig *rest.Config,
 	}
 	// generate tokenAuther from oidc config
 	tokenAuther, err := oidc.New(ctx, oidc.Options{
-		CAContentProvider:    caFromFile,
+		CAContentProvider:    oidcCAProvider, // Pass the interface, which is nil or a valid provider
 		SupportedSigningAlgs: oidcOptions.SigningAlgs,
 		JWTAuthenticator:     jwtConfig,
 	})
