@@ -107,11 +107,6 @@ func New(options Options) (*XFF, error) {
 	return xff, nil
 }
 
-// Default creates a new XFF handler with default options.
-func Default() (*XFF, error) {
-	return New(Options{})
-}
-
 // Handler updates RemoteAdd from X-Fowarded-For Headers.
 func (xff *XFF) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +115,7 @@ func (xff *XFF) Handler(h http.Handler) http.Handler {
 	})
 }
 
-// Negroni compatible interface
+// ServeHTTP updates RemoteAdd from X-Fowarded-For Headers.
 func (xff *XFF) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	r.RemoteAddr = GetRemoteAddrIfAllowed(r, xff.allowed)
 	next(w, r)
