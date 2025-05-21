@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	authzv1 "k8s.io/api/authorization/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -175,6 +176,9 @@ func (subjectAccessReview *SubjectAccessReview) checkRbacImpersonationAuthorizat
 	}
 
 	clusterSubjectAccessReview := authzv1.SubjectAccessReview{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sar-" + resource + "-" + name, // Create a unique name
+		},
 		Spec: authzv1.SubjectAccessReviewSpec{
 			User:   requester.GetName(),
 			Groups: requester.GetGroups(),
