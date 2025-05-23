@@ -45,7 +45,9 @@ var (
 
 	ValidPluginFilenamePrefixes = []string{"fcp"}
 
-	ValidSubcommandBinaries = map[string]string{}
+	ValidSubcommandBinaries = map[string]string{
+		"helm": "helm",
+	}
 )
 
 func GetDir() string {
