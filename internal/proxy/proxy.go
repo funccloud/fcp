@@ -64,8 +64,8 @@ type errorHandlerFn func(http.ResponseWriter, *http.Request, error)
 
 type Proxy struct {
 	oidcRequestAuther     *bearertoken.Authenticator
-	tokenAuther           authenticator.Token
-	tokenReviewer         *tokenreview.TokenReview
+	tokenAuther           authenticator.Token // Already an interface, good.
+	tokenReviewer         tokenreview.TokenReviewerInterface // Changed to interface
 	subjectAccessReviewer *subjectaccessreview.SubjectAccessReview
 	secureServingInfo     *server.SecureServingInfo
 	auditor               *audit.Audit
@@ -91,7 +91,7 @@ func (caFromFile CAFromFile) CurrentCABundleContent() []byte {
 func New(ctx context.Context, restConfig *rest.Config,
 	oidcOptions *OIDCAuthenticationOptions,
 	auditOptions *options.AuditOptions,
-	tokenReviewer *tokenreview.TokenReview,
+	tokenReviewer tokenreview.TokenReviewerInterface, // Changed to interface
 	subjectAccessReviewer *subjectaccessreview.SubjectAccessReview,
 	ssinfo *server.SecureServingInfo,
 	config *Config) (*Proxy, error) {
@@ -324,6 +324,11 @@ func (p *Proxy) roundTripperForRestConfig(config *rest.Config) (http.RoundTrippe
 // Return the proxy OIDC token authenticator
 func (p *Proxy) OIDCTokenAuthenticator() authenticator.Token {
 	return p.tokenAuther
+}
+
+// WithAuthenticateRequest is a wrapper around withAuthenticateRequest for testing.
+func (p *Proxy) WithAuthenticateRequest(handler http.Handler) http.Handler {
+	return p.withAuthenticateRequest(handler)
 }
 
 func (p *Proxy) RunPreShutdownHooks() error {

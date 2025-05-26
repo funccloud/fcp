@@ -12,6 +12,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// TokenReviewerInterface defines the contract for reviewing tokens.
+type TokenReviewerInterface interface {
+	Review(req *http.Request) (passthrough bool, err error)
+}
+
 var (
 	timeout = time.Second * 10
 )
