@@ -32,6 +32,7 @@ resources:
 - ../certmanager
 - metrics_service.yaml
 - ../network-policy
+- ../proxy
 
 # Uncomment the patches line if you enable Metrics
 # [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
