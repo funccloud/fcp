@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.funccloud.dev/fcp/internal/cmd/install"
+	"go.funccloud.dev/fcp/internal/cmd/oidc"
 	"go.funccloud.dev/fcp/internal/cmd/plugin"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -383,6 +384,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 	cmds.AddCommand(version.NewCmdVersion(f, o.IOStreams))
 	cmds.AddCommand(install.NewCmdInstall(f, o.IOStreams))
 	cmds.AddCommand(auth.NewCmdAuth(f, o.IOStreams))
+	cmds.AddCommand(oidc.NewCmdOIDC(f, o.IOStreams))
 
 	// Stop warning about normalization of flags. That makes it possible to
 	// add the klog flags later.

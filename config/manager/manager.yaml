@@ -105,7 +105,13 @@ spec:
           requests:
             cpu: 10m
             memory: 128Mi
-        volumeMounts: []
-      volumes: []
+        volumeMounts:
+        - name: proxy-certs
+          mountPath: /var/run/kubernetes
+          readOnly: true
+      volumes:
+      - name: proxy-certs
+        secret:
+          secretName: proxy-server-tls
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

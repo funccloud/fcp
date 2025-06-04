@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"go.funccloud.dev/fcp/internal/config"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-	"k8s.io/client-go/util/homedir"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -51,8 +51,7 @@ var (
 )
 
 func GetDir() string {
-	home := homedir.HomeDir()
-	return filepath.Join(home, ".fcp", "plugins")
+	return filepath.Join(config.GetConfigDir(), "plugins")
 }
 
 func SetDirEnv() {
