@@ -4,13 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
-
-	"encoding/json"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/pkg/browser"
@@ -228,14 +227,19 @@ func (o *OIDCLoginOptions) handleExistingSession(_ context.Context, existingSess
 				ExpirationTimestamp: &metav1.Time{Time: existingSession.IDTokenExpiry},
 			},
 		}
-		ecBytes, jsonErr := json.Marshal(ec)
-		if jsonErr != nil {
-			// Print to ErrOut as this is an unexpected error before returning
-			_, _ = fmt.Fprintf(o.IOStreams.ErrOut, "Failed to marshal exec credential for existing session: %v\n", jsonErr)
-			return false, fmt.Errorf("failed to marshal exec credential for existing session: %w", jsonErr)
+		ecBytes, marshalErr := yaml.YAMLToJSON([]byte(mustYamlMarshal(ec)))
+		if marshalErr != nil {
+			_, _ = fmt.Fprintf(o.IOStreams.ErrOut, "Failed to marshal exec credential for existing session: %v\n", marshalErr)
+			return false, fmt.Errorf("failed to marshal exec credential for existing session: %w", marshalErr)
 		}
 		_, _ = fmt.Fprintln(o.IOStreams.Out, string(ecBytes))
-		_, _ = fmt.Fprintf(o.IOStreams.ErrOut, "Using existing valid OIDC session. Email: %s. Groups: %v. Expires: %s.\n", existingSession.Email, existingSession.Groups, existingSession.IDTokenExpiry.Format(time.RFC3339))
+		_, _ = fmt.Fprintf(
+			o.IOStreams.ErrOut,
+			"Using existing valid OIDC session. Email: %s. Groups: %v. Expires: %s.\n",
+			existingSession.Email,
+			existingSession.Groups,
+			existingSession.IDTokenExpiry.Format(time.RFC3339),
+		)
 		return true, nil
 	}
 	msg := "No valid existing session found or session expired. " +
@@ -328,7 +332,7 @@ func (o *OIDCLoginOptions) performNewOIDCLogin(ctx context.Context) (*OIDCSessio
 				ExpirationTimestamp: &metav1.Time{Time: token.Expiry},
 			},
 		}
-		ecBytes, err := json.Marshal(ec)
+		ecBytes, err := yaml.YAMLToJSON([]byte(mustYamlMarshal(ec)))
 		if err != nil {
 			_, _ = fmt.Fprintf(o.IOStreams.ErrOut, "Failed to marshal exec credential: %v\n", err)
 		} else {
@@ -522,4 +526,13 @@ func generateRandomString(length int) (string, error) {
 		return encoded[:length], nil
 	}
 	return encoded, nil
+}
+
+// Helper for YAML marshaling
+func mustYamlMarshal(obj interface{}) string {
+	b, err := yaml.Marshal(obj)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
