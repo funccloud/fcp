@@ -63,14 +63,6 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - --oidc-issuer-url
-          - https://accounts.google.com
-          - --oidc-client-id
-          - 123456789012-abc123def456.apps.googleusercontent.com
-          - --oidc-username-claim
-          - email
-          - --oidc-groups-claim
-          - groups
         image: manager:latest
         name: manager
         ports: []
@@ -105,13 +97,5 @@ spec:
           requests:
             cpu: 10m
             memory: 128Mi
-        volumeMounts:
-        - name: proxy-certs
-          mountPath: /var/run/kubernetes
-          readOnly: true
-      volumes:
-      - name: proxy-certs
-        secret:
-          secretName: proxy-server-tls
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

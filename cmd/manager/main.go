@@ -57,16 +57,6 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var tokenPassthrough bool
-	var tokenPassthroughAudiences string
-	var disableImpersonation bool
-	var oidcIssuerURL string
-	var oidcClientID string
-	var oidcUsernameClaim string
-	var oidcUsernamePrefix string
-	var oidcGroupsClaim string
-	var oidcGroupsPrefix string
-	var oidcCAFile string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -85,26 +75,6 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.BoolVar(&tokenPassthrough, "token-passthrough", false,
-		"If set, the token will be passed through to the proxy server.")
-	flag.StringVar(&tokenPassthroughAudiences, "token-passthrough-audiences", "",
-		"The audiences to pass through the token. This is only used if --token-passthrough is set.")
-	flag.BoolVar(&disableImpersonation, "disable-impersonation", false,
-		"If set, impersonation will be disabled.")
-	flag.StringVar(&oidcIssuerURL, "oidc-issuer-url", "https://accounts.google.com",
-		"The issuer URL for OIDC authentication.")
-	flag.StringVar(&oidcClientID, "oidc-client-id", "test-client",
-		"The client ID for OIDC authentication.")
-	flag.StringVar(&oidcUsernameClaim, "oidc-username-claim", "email",
-		"The claim to use for the username in OIDC authentication.")
-	flag.StringVar(&oidcUsernamePrefix, "oidc-username-prefix", "",
-		"The prefix to use for the username in OIDC authentication.")
-	flag.StringVar(&oidcGroupsClaim, "oidc-groups-claim", "groups",
-		"The claim to use for the groups in OIDC authentication.")
-	flag.StringVar(&oidcGroupsPrefix, "oidc-groups-prefix", "",
-		"The prefix to use for the groups in OIDC authentication.")
-	flag.StringVar(&oidcCAFile, "oidc-ca-file", "",
-		"The CA file to use for OIDC authentication.")
 	opts := zap.Options{
 		Development: true,
 	}
