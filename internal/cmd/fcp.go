@@ -313,7 +313,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 			if cmd.Name() == cobra.ShellCompRequestCmd {
 				// This is the __complete or __completeNoDesc command which
 				// indicates shell completion has been requested.
-				plugin.SetupPluginCompletion(cmd, args)
+				plugin.SetupPluginCompletion(cmd, args, o.IOStreams)
 			}
 
 			return initProfiling()
@@ -371,7 +371,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 	// Add plugin command group to the list of command groups.
 	// The commands are only injected for the scope of showing help and completion, they are not
 	// invoked directly.
-	pluginCommandGroup := plugin.GetPluginCommandGroup(cmds)
+	pluginCommandGroup := plugin.GetPluginCommandGroup(cmds, o.IOStreams)
 	groups = append(groups, pluginCommandGroup)
 
 	templates.ActsAsRootCommand(cmds, filters, groups...)

@@ -12,22 +12,23 @@ import (
 
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
-func GetPluginCommandGroup(fcp *cobra.Command) templates.CommandGroup {
+func GetPluginCommandGroup(fcp *cobra.Command, ioStreams genericiooptions.IOStreams) templates.CommandGroup {
 	// Find root level
 	return templates.CommandGroup{
 		Message:  i18n.T("Subcommands provided by plugins:"),
-		Commands: registerPluginCommands(fcp, false),
+		Commands: registerPluginCommands(fcp, false, ioStreams),
 	}
 }
 
 // SetupPluginCompletion adds a Cobra command to the command tree for each
 // plugin.  This is only done when performing shell completion that relate
 // to plugins.
-func SetupPluginCompletion(cmd *cobra.Command, args []string) {
+func SetupPluginCompletion(cmd *cobra.Command, args []string, ioStreams genericiooptions.IOStreams) {
 	fcp := cmd.Root()
 	if len(args) > 0 {
 		if strings.HasPrefix(args[0], "-") {
@@ -39,7 +40,7 @@ func SetupPluginCompletion(cmd *cobra.Command, args []string) {
 		if len(args) == 1 {
 			// We are completing a subcommand at the first level so
 			// we should include all plugins names.
-			registerPluginCommands(fcp, true)
+			registerPluginCommands(fcp, true, ioStreams)
 			return
 		}
 
@@ -65,9 +66,8 @@ func SetupPluginCompletion(cmd *cobra.Command, args []string) {
 			// This must be done *before* adding the plugin commands so that
 			// when creating those plugin commands, the flags don't exist.
 			fcp.ResetFlags()
-			cobra.CompDebugln("Cleared global flags for plugin completion", true)
-
-			registerPluginCommands(fcp, true)
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, i18n.T("Warning: fcp global flags are not supported for plugins. They will not be included in the completion choices."))
+			registerPluginCommands(fcp, true, ioStreams)
 		}
 	}
 }
@@ -83,8 +83,11 @@ func ThirdPartyPlugin(pluginName string) (string, bool) {
 
 // registerPluginCommand allows adding Cobra command to the command tree or extracting them for usage in
 // e.g. the help function or for registering the completion function
-func registerPluginCommands(fcp *cobra.Command, list bool) (cmds []*cobra.Command) {
+func registerPluginCommands(fcp *cobra.Command, list bool, ioStreams genericiooptions.IOStreams) (cmds []*cobra.Command) {
 	userDefinedCommands := []*cobra.Command{}
+
+	// Track added commands to avoid duplicates
+	added := make(map[string]bool)
 
 	streams := genericclioptions.IOStreams{
 		In:     &bytes.Buffer{},
@@ -93,7 +96,10 @@ func registerPluginCommands(fcp *cobra.Command, list bool) (cmds []*cobra.Comman
 	}
 
 	o := &PluginListOptions{IOStreams: streams}
-	o.Complete(fcp) // nolint:errcheck
+	err := o.Complete(fcp)
+	if err != nil {
+		_, _ = fmt.Fprintf(ioStreams.ErrOut, "Error completing plugin options: %v\n", err)
+	}
 	plugins, _ := o.ListPlugins()
 	for _, plugin := range plugins {
 		plugin = filepath.Base(plugin)
@@ -131,6 +137,11 @@ func registerPluginCommands(fcp *cobra.Command, list bool) (cmds []*cobra.Comman
 			if ok {
 				remainingArg = t
 			}
+			// Deduplicate by command name
+			if added[remainingArg] {
+				continue
+			}
+			added[remainingArg] = true
 			cmd := &cobra.Command{
 				Use: remainingArg,
 				// Add a description that will be shown with completion choices.
