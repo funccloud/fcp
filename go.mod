@@ -5,7 +5,6 @@ go 1.24.3
 godebug default=go1.24
 
 require (
-
 	github.com/coreos/go-oidc/v3 v3.14.1
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.23.4
