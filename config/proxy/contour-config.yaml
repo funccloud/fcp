@@ -9,7 +9,7 @@ metadata:
 spec:
   ingressClassName: contour-external
   virtualhost:
-    fqdn: server.100.115.92.198.sslip.io
+    fqdn: server.127.0.0.1.sslip.io
     tls:
       passthrough: true 
   tcpproxy:

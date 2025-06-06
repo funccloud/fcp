@@ -14,5 +14,4 @@ spec:
   dnsNames:
     - proxy-service.fcp-system.svc # DNS name for the proxy service
     - proxy-service.fcp-system.svc.cluster.local # DNS name for the proxy service
-    - server.100.115.92.198.sslip.io # DNS name for the external server
     - server.127.0.0.1.sslip.io # DNS name for the external server
