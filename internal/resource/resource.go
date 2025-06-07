@@ -43,12 +43,14 @@ func CheckOrInstallVersion(ctx context.Context, domain, pluginDir string, k8sCli
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Knative", "error", err)
 		return err
 	}
+
 	// Check if Pinniped is installed
 	err = pinniped.CheckOrInstallVersion(ctx, k8sClient, domain, issuerName, ioStreams)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Pinniped", "error", err)
 		return err
 	}
+
 	err = helm.EnsureHelmBinary(ioStreams, pluginDir)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error ensuring Helm binary", "error", err)
