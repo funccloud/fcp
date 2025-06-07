@@ -65,9 +65,7 @@ spec:
           - --health-probe-bind-address=:8081
         image: manager:latest
         name: manager
-        env:
-          - name: DEFAULT_DOMAIN
-            value: ""
+        env: []
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
