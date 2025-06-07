@@ -8,6 +8,7 @@ import (
 	"go.funccloud.dev/fcp/internal/resource/helm"
 	"go.funccloud.dev/fcp/internal/resource/kind"
 	"go.funccloud.dev/fcp/internal/resource/knative"
+	"go.funccloud.dev/fcp/internal/resource/pinniped"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -37,9 +38,15 @@ func CheckOrInstallVersion(ctx context.Context, domain, pluginDir string, k8sCli
 	}
 
 	// Check if Knative is installed, passing the onKind flag
-	err = knative.CheckOrInstallVersion(ctx, domain, k8sClient, ioStreams, onKind) // Pass onKind here
+	issuerName, err := knative.CheckOrInstallVersion(ctx, domain, k8sClient, ioStreams, onKind) // Pass onKind here
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Knative", "error", err)
+		return err
+	}
+	// Check if Pinniped is installed
+	err = pinniped.CheckOrInstallVersion(ctx, k8sClient, domain, issuerName, ioStreams)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Pinniped", "error", err)
 		return err
 	}
 	err = helm.EnsureHelmBinary(ioStreams, pluginDir)
