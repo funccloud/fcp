@@ -1,3 +1,4 @@
+allow_k8s_contexts('gke_funccloud-platform-prod_us-central1_fcp')
 load('ext://restart_process', 'docker_build_with_restart')
 
 # Ignore changes in the bin directory
