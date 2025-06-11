@@ -3,6 +3,7 @@ package certmanager
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.funccloud.dev/fcp/internal/yamlutil"
@@ -42,7 +43,18 @@ func InstallCertManager(ctx context.Context, k8sClient client.Client, ioStreams 
 	// 2. Install main cert-manager components
 	manifestURL := fmt.Sprintf(CertManagerManifestURLTemplate, CertManagerVersion)
 	_, _ = fmt.Fprintln(ioStreams.Out, "Downloading main cert-manager manifest", "url", manifestURL)
-	if err := yamlutil.ApplyManifestFromURL(ctx, k8sClient, ioStreams, manifestURL); err != nil {
+	manifestBytes, err := yamlutil.DownloadYAMLFromURL(ctx, manifestURL, ioStreams)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to download main cert-manager manifest", "error", err)
+		return fmt.Errorf("failed to download main cert-manager manifest from %s: %w", manifestURL, err)
+	}
+	manifestString := string(manifestBytes)
+	// leader election namespace is hardcoded to "kube-system" in the manifest, replace it with CertManagerNamespace
+	// This is necessary to ensure fcp will be able to run in autopilot clusters like gke autopilot
+	// that we not have access to kube-system namespace.
+	manifestString = strings.ReplaceAll(manifestString, "kube-system", CertManagerNamespace)
+
+	if err := yamlutil.ApplyManifestYAML(ctx, k8sClient, manifestString, ioStreams); err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply main cert-manager manifest", "error", err)
 		return fmt.Errorf("failed to apply main cert-manager manifest from %s: %w", manifestURL, err)
 	}
@@ -52,7 +64,7 @@ func InstallCertManager(ctx context.Context, k8sClient client.Client, ioStreams 
 	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for cert-manager deployments to become ready...")
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute) // 5-minute timeout
 	defer cancel()
-	err := waitForCertManagerDeployments(waitCtx, k8sClient, ioStreams)
+	err = waitForCertManagerDeployments(waitCtx, k8sClient, ioStreams)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Cert-manager deployments did not become ready in time", "error", err)
 		return fmt.Errorf("cert-manager deployments did not become ready: %w", err)

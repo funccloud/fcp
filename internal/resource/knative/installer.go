@@ -6,7 +6,6 @@ import (
 	_ "embed" // Import the embed package
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"text/template"
 	"time"
@@ -81,31 +80,10 @@ func InstallKnative(
 
 	// 1. Fetch and Apply Contour manifest
 	_, _ = fmt.Fprintln(ioStreams.Out, "Fetching Contour manifest from...", "url", contourURL)
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, contourURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request for Contour manifest: %w", err)
-	}
-	resp, err := httpClient.Do(req)
+	contourManifestBytes, err := yamlutil.DownloadYAMLFromURL(applyCtx, contourURL, ioStreams)
 	if err != nil {
 		return fmt.Errorf("failed to download Contour manifest from %s: %w", contourURL, err)
 	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log or handle the error if necessary, for now, we'll print it to ErrOut
-			_, _ = fmt.Fprintln(ioStreams.ErrOut, "failed to close response body:", closeErr)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download Contour manifest: status %s from %s", resp.Status, contourURL)
-	}
-
-	contourManifestBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read Contour manifest body: %w", err)
-	}
-
 	contourManifestContent := string(contourManifestBytes)
 
 	if isKind {
