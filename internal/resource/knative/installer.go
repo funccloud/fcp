@@ -86,6 +86,14 @@ func InstallKnative(
 	}
 	contourManifestContent := string(contourManifestBytes)
 
+	// Add tolerations to Deployments and DaemonSets in the Contour manifest
+	_, _ = fmt.Fprintln(ioStreams.Out, "Adding tolerations to Contour manifest...")
+	modifiedContourManifestWithTolerations, err := addTolerationsToManifest(contourManifestContent, ioStreams)
+	if err != nil {
+		return fmt.Errorf("failed to add tolerations to Contour manifest: %w", err)
+	}
+	contourManifestContent = modifiedContourManifestWithTolerations
+
 	if isKind {
 		// The primary logging for this step is now within modifyContourServiceForKind
 		modifiedManifest, err := modifyContourServiceForKind(contourManifestContent, ioStreams)
@@ -326,10 +334,10 @@ func waitForKnativeServingReady(ctx context.Context, k8sClient client.Client, nn
 // with specific HTTP/HTTPS port configurations, and returns the modified spec.
 // serviceNamespace and serviceName are used for logging purposes.
 func configureSpecForNodePort(
-	spec map[string]interface{},
+	spec map[string]any,
 	serviceNamespace, serviceName string,
 	ioStreams genericiooptions.IOStreams,
-) (map[string]interface{}, error) {
+) (map[string]any, error) {
 	if err := unstructured.SetNestedField(spec, "NodePort", "type"); err != nil {
 		return nil, fmt.Errorf("failed to set service type to NodePort for %s/%s: %w", serviceNamespace, serviceName, err)
 	}
@@ -339,14 +347,14 @@ func configureSpecForNodePort(
 		return nil, fmt.Errorf("error getting ports from service spec %s/%s: %w", serviceNamespace, serviceName, errPorts)
 	}
 	if !portsFound {
-		ports = []interface{}{} // Initialize if not found
+		ports = []any{} // Initialize if not found
 	}
 
 	var httpPortExists, httpsPortExists bool
-	updatedPorts := []interface{}{}
+	updatedPorts := []any{}
 
 	for _, p := range ports {
-		portMap, ok := p.(map[string]interface{})
+		portMap, ok := p.(map[string]any)
 		if !ok {
 			updatedPorts = append(updatedPorts, p) // Keep non-map items
 			continue
@@ -360,7 +368,7 @@ func configureSpecForNodePort(
 
 		if portNum == 80 {
 			_, _ = fmt.Fprintf(ioStreams.Out,
-				"Updating HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\n",
+				"Updating HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\\n",
 				serviceNamespace, serviceName, httpNodePort, httpTargetPort) // nolint:errcheck
 			if err := unstructured.SetNestedField(portMap, httpNodePort, "nodePort"); err != nil {
 				return nil, fmt.Errorf("failed to set http nodePort for %s/%s: %w", serviceNamespace, serviceName, err)
@@ -372,7 +380,7 @@ func configureSpecForNodePort(
 			httpPortExists = true
 		} else if portNum == 443 {
 			_, _ = fmt.Fprintf(ioStreams.Out,
-				"Updating HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\n",
+				"Updating HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\\n",
 				serviceNamespace, serviceName, httpsNodePort, httpsTargetPort) // nolint:errcheck
 			if err := unstructured.SetNestedField(portMap, httpsNodePort, "nodePort"); err != nil {
 				return nil, fmt.Errorf("failed to set https nodePort for %s/%s: %w", serviceNamespace, serviceName, err)
@@ -388,18 +396,18 @@ func configureSpecForNodePort(
 
 	if !httpPortExists {
 		_, _ = fmt.Fprintf(ioStreams.Out,
-			"Adding HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\n",
+			"Adding HTTP port 80 for service %s/%s with NodePort %d and targetPort %d\\n",
 			serviceNamespace, serviceName, httpNodePort, httpTargetPort) // nolint:errcheck
-		updatedPorts = append(updatedPorts, map[string]interface{}{
+		updatedPorts = append(updatedPorts, map[string]any{
 			"name": "http", "port": int64(80), "protocol": "TCP",
 			"targetPort": httpTargetPort, "nodePort": httpNodePort,
 		})
 	}
 	if !httpsPortExists {
 		_, _ = fmt.Fprintf(ioStreams.Out,
-			"Adding HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\n",
+			"Adding HTTPS port 443 for service %s/%s with NodePort %d and targetPort %d\\n",
 			serviceNamespace, serviceName, httpsNodePort, httpsTargetPort) // nolint:errcheck
-		updatedPorts = append(updatedPorts, map[string]interface{}{
+		updatedPorts = append(updatedPorts, map[string]any{
 			"name": "https", "port": int64(443), "protocol": "TCP",
 			"targetPort": httpsTargetPort, "nodePort": httpsNodePort,
 		})
@@ -475,4 +483,134 @@ func modifyContourServiceForKind(manifestYAML string, ioStreams genericiooptions
 	_, _ = fmt.Fprintln(ioStreams.Out,
 		"Modifying LoadBalancer services in Contour manifest to NodePort for Kind cluster...")
 	return modifyLoadBalancerServicesToNodePort(manifestYAML, ioStreams)
+}
+
+// addTolerationsToManifest processes a YAML manifest string,
+// finds all Kubernetes Deployments and DaemonSets, and adds specified tolerations
+// to their pod templates if they don't already exist.
+func addTolerationsToManifest(manifestYAML string, ioStreams genericiooptions.IOStreams) (string, error) {
+	decoder := k8syaml.NewYAMLOrJSONDecoder(strings.NewReader(manifestYAML), 4096)
+	var resultBuilder strings.Builder
+	firstDocument := true
+
+	desiredTolerations := []corev1.Toleration{
+		{
+			Key:      "kubernetes.io/arch",
+			Operator: corev1.TolerationOpEqual,
+			Value:    "arm64",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+		{
+			Key:      "kubernetes.io/arch",
+			Operator: corev1.TolerationOpEqual,
+			Value:    "amd64",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+	}
+
+	for {
+		obj := &unstructured.Unstructured{}
+		err := decoder.Decode(obj)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to decode YAML object: %w", err)
+		}
+		if obj.Object == nil {
+			continue
+		}
+
+		kind := obj.GetKind()
+		if kind == "Deployment" || kind == "DaemonSet" {
+			_, _ = fmt.Fprintf(ioStreams.Out, "Processing %s: %s/%s for tolerations\n", kind, obj.GetNamespace(), obj.GetName())
+
+			// Tolerations for both Deployment and DaemonSet are under spec.template.spec.tolerations
+			tolerationsPath := []string{"spec", "template", "spec", "tolerations"}
+			currentTolerationsRaw, found, err := unstructured.NestedSlice(obj.Object, tolerationsPath...)
+
+			if err != nil {
+				_, _ = fmt.Fprintf(ioStreams.ErrOut, "Error getting tolerations for %s %s/%s: %v. Object will be marshaled without these toleration changes.\n", kind, obj.GetNamespace(), obj.GetName(), err)
+				// Marshal the current object as is and continue to the next document,
+				// effectively skipping the toleration modification logic for this object.
+				modifiedYAMLBytes, marshalErr := yaml.Marshal(obj.Object)
+				if marshalErr != nil {
+					return "", fmt.Errorf("failed to marshal object %s/%s to YAML (after toleration fetch error): %w", obj.GetNamespace(), obj.GetName(), marshalErr)
+				}
+				if !firstDocument {
+					resultBuilder.WriteString("---\n")
+				}
+				resultBuilder.Write(modifiedYAMLBytes)
+				firstDocument = false
+				continue // Continue to the next YAML document in the manifest
+			}
+
+			// If we reach here, err was nil. Proceed with toleration modification.
+			var existingTolerations []corev1.Toleration
+			if found {
+				for _, tRaw := range currentTolerationsRaw {
+					tolerationMap, ok := tRaw.(map[string]any)
+					if !ok {
+						_, _ = fmt.Fprintf(ioStreams.ErrOut, "Skipping non-map toleration item for %s %s/%s\\n", kind, obj.GetNamespace(), obj.GetName())
+						continue
+					}
+					existingTolerations = append(existingTolerations, corev1.Toleration{
+						Key:      fmt.Sprintf("%v", tolerationMap["key"]),
+						Operator: corev1.TolerationOperator(fmt.Sprintf("%v", tolerationMap["operator"])),
+						Value:    fmt.Sprintf("%v", tolerationMap["value"]),
+						Effect:   corev1.TaintEffect(fmt.Sprintf("%v", tolerationMap["effect"])),
+					})
+				}
+			}
+
+			updatedTolerations := make([]any, len(currentTolerationsRaw))
+			copy(updatedTolerations, currentTolerationsRaw)
+			tolerationsModified := false
+
+			for _, desired := range desiredTolerations {
+				exists := false
+				for _, existingRaw := range currentTolerationsRaw {
+					existingMap, ok := existingRaw.(map[string]any)
+					if !ok {
+						continue
+					}
+					if existingMap["key"] == desired.Key &&
+						existingMap["operator"] == string(desired.Operator) &&
+						existingMap["value"] == desired.Value &&
+						existingMap["effect"] == string(desired.Effect) {
+						exists = true
+						break
+					}
+				}
+
+				if !exists {
+					_, _ = fmt.Fprintf(ioStreams.Out, "Adding toleration %s:%s Op %s for %s %s/%s\\n", desired.Key, desired.Value, desired.Operator, kind, obj.GetNamespace(), obj.GetName())
+					updatedTolerations = append(updatedTolerations, map[string]any{
+						"key":      desired.Key,
+						"operator": string(desired.Operator),
+						"value":    desired.Value,
+						"effect":   string(desired.Effect),
+					})
+					tolerationsModified = true
+				}
+			}
+
+			if tolerationsModified {
+				if errSet := unstructured.SetNestedSlice(obj.Object, updatedTolerations, tolerationsPath...); errSet != nil {
+					_, _ = fmt.Fprintf(ioStreams.ErrOut, "Failed to set updated tolerations for %s %s/%s: %v. Skipping toleration modification for this object.\n", kind, obj.GetNamespace(), obj.GetName(), errSet)
+				}
+			}
+		}
+
+		modifiedYAMLBytes, err := yaml.Marshal(obj.Object)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal object %s/%s to YAML: %w", obj.GetNamespace(), obj.GetName(), err)
+		}
+		if !firstDocument {
+			resultBuilder.WriteString("---\n")
+		}
+		resultBuilder.Write(modifiedYAMLBytes)
+		firstDocument = false
+	}
+	return resultBuilder.String(), nil
 }

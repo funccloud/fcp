@@ -784,6 +784,8 @@ spec:
         ports:
         - containerPort: 8443
           protocol: TCP
+        - containerPort: 8080
+          protocol: TCP
         env: []
         livenessProbe:
           httpGet:
