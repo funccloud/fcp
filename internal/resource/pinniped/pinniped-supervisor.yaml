@@ -784,8 +784,6 @@ spec:
         ports:
         - containerPort: 8443
           protocol: TCP
-        - containerPort: 8080
-          protocol: TCP
         env: []
         livenessProbe:
           httpGet:
@@ -875,11 +873,6 @@ spec:
   - protocol: TCP
     port: 443
     targetPort: 8443
-    name: https
-  - protocol: TCP
-    port: 80
-    targetPort: 8080
-    name: http
 ---
 apiVersion: apiregistration.k8s.io/v1
 kind: APIService
@@ -2476,4 +2469,5 @@ spec:
   routes:
     - services:
       - name: pinniped-supervisor-oidc
-        port: 80
+        port: 443
+        protocol: tls
