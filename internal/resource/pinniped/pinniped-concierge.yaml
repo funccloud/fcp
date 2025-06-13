@@ -871,7 +871,7 @@ metadata:
 spec:
   impersonationProxy:
     mode: enabled
-    externalEndpoint: server.{{ .Domain }}
+    externalEndpoint: server.{{ .Domain }}:443
     service:
       type: ClusterIP
       annotations:
