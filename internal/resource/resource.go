@@ -45,7 +45,7 @@ func CheckOrInstallVersion(ctx context.Context, domain, pluginDir string, k8sCli
 	}
 
 	// Check if Pinniped is installed
-	err = pinniped.CheckOrInstallVersion(ctx, k8sClient, domain, issuerName, ioStreams)
+	err = pinniped.CheckOrInstallVersion(ctx, k8sClient, domain, issuerName, ioStreams, onKind)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Pinniped", "error", err)
 		return err

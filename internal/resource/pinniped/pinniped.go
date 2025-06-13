@@ -13,7 +13,13 @@ import (
 
 // CheckOrInstallVersion checks if Pinniped is installed and installs it if not.
 // It now uses the new InstallPinniped function from the installer.go file.
-func CheckOrInstallVersion(ctx context.Context, k8sClient client.Client, domain, issuerName string, ioStreams genericiooptions.IOStreams) error {
+func CheckOrInstallVersion(ctx context.Context, k8sClient client.Client, domain, issuerName string, ioStreams genericiooptions.IOStreams, isKind bool) error {
+	if issuerName == "" {
+		issuerName = "le-prod-issuer"
+		if isKind {
+			issuerName = "le-staging-issuer"
+		}
+	}
 	// Check for Pinniped Concierge deployment
 	conciergeDeployment := &appsv1.Deployment{}
 	conciergeNN := types.NamespacedName{

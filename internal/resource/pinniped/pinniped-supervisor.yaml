@@ -865,6 +865,7 @@ metadata:
     app: pinniped-supervisor
   annotations:
     kapp.k14s.io/disable-default-label-scoping-rules: ""
+    projectcontour.io/upstream-protocol.tls: "https"
 spec:
   type: ClusterIP
   selector:
