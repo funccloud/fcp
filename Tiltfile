@@ -35,7 +35,7 @@ def generate():
 # Function to build a specific app binary
 def build_binary_cmd(app):
     # Using .format() instead of f-string
-    return 'CGO_ENABLED=0 GOOS=linux go build -o ./bin/{} cmd/{}/main.go'.format(app, app)
+    return 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/{} cmd/{}/main.go'.format(app, app)
 
 
 # Function to generate k8s YAML after editing images for ALL apps
