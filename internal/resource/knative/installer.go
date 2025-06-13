@@ -561,6 +561,16 @@ func addTolerationsToManifest(manifestYAML string, ioStreams genericiooptions.IO
 						Effect:   corev1.TaintEffect(fmt.Sprintf("%v", tolerationMap["effect"])),
 					})
 				}
+				// Ensure the appended tolerations are used by setting them back to the object
+				// Convert []corev1.Toleration to []interface{}
+				tolerationsAsInterface := make([]interface{}, len(existingTolerations))
+				for i, t := range existingTolerations {
+					tolerationsAsInterface[i] = t
+				}
+				if err := unstructured.SetNestedSlice(obj.Object, tolerationsAsInterface, "spec", "template", "spec", "tolerations"); err != nil {
+					// Handle error appropriately, e.g., log it or return an error
+					_, _ = fmt.Fprintf(ioStreams.ErrOut, "Error setting tolerations for %s %s/%s: %v\\n", kind, obj.GetNamespace(), obj.GetName(), err)
+				}
 			}
 
 			updatedTolerations := make([]any, len(currentTolerationsRaw))
