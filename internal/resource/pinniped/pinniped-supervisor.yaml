@@ -2466,9 +2466,8 @@ spec:
   virtualhost:
     fqdn: id.{{ .Domain }}
     tls:
-      secretName: pinniped-supervisor-tls-domain
-  routes:
-    - services:
+      passthrough: true
+  tcpproxy:
+    services:
       - name: pinniped-supervisor-oidc
         port: 443
-        protocol: tls
