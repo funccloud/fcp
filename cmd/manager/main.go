@@ -83,7 +83,6 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	setupLog.Info("Checking prerequisites...")
 	k8sConfig := ctrl.GetConfigOrDie()
 	ctx := ctrl.SetupSignalHandler()
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -253,7 +252,6 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")

@@ -4,15 +4,16 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"strings"
 
 	"go.funccloud.dev/fcp/internal/scheme"
 	"go.funccloud.dev/fcp/internal/yamlutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1" // Ensure metav1 is imported
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types" // Added import
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -26,7 +27,7 @@ var leStagingIssuerYAML string
 // CheckOrInstallVersion checks if Knative Serving (managed by Operator) is installed and ready.
 // If not installed or not ready, it attempts to install using the Knative Operator after applying the appropriate Let's Encrypt issuer.
 // Returns an error if the check fails or if installation is required and fails.
-func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.Client, ioStreams genericiooptions.IOStreams, isKind bool) error { // Added isKind parameter
+func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.Client, ioStreams genericiooptions.IOStreams, isKind bool) (string, error) { // Added isKind parameter
 
 	// Check for the KnativeServing CR status first, as this indicates Operator success
 	// Ensure knativeServingNamespace and knativeServingCRName are accessible from installer.go (same package)
@@ -59,7 +60,7 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 					if condStatus == string(metav1.ConditionTrue) {
 						_, _ = fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) is installed and Ready.")
 						scheme.AddKnative() // Add Knative scheme to the runtime scheme
-						return nil          // Already installed and ready
+						return "", nil      // Already installed and ready
 					}
 					// Found Ready condition, but it's not True
 					_, _ = fmt.Fprintln(ioStreams.Out, "KnativeServing CR found but not Ready.", "status", condStatus)
@@ -83,14 +84,13 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 	} else {
 		// Another error occurred while fetching the KnativeServing CR
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking KnativeServing CR", "error", err)
-		return fmt.Errorf("error checking KnativeServing CR: %w", err)
+		return "", fmt.Errorf("error checking KnativeServing CR: %w", err)
 	}
-
+	var issuerName string
 	if needsInstall {
 		// Apply the appropriate Let's Encrypt issuer before installing Knative
 		var issuerYAML string
-		var issuerName string
-		if isKind {
+		if isKind || domain == "localhost" || strings.HasSuffix(domain, ".local") {
 			_, _ = fmt.Fprintln(ioStreams.Out, "Applying Let's Encrypt staging issuer for Kind cluster...")
 			issuerYAML = leStagingIssuerYAML
 			issuerName = "le-staging-issuer" // Assuming name from YAML
@@ -103,7 +103,7 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		applyErr := yamlutil.ApplyManifestYAML(ctx, k8sClient, issuerYAML, ioStreams)
 		if applyErr != nil {
 			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply Let's Encrypt issuer", "issuer", issuerName, "error", applyErr)
-			return fmt.Errorf("failed to apply Let's Encrypt issuer %s: %w", issuerName, applyErr)
+			return "", fmt.Errorf("failed to apply Let's Encrypt issuer %s: %w", issuerName, applyErr)
 		}
 		_, _ = fmt.Fprintln(ioStreams.Out, "Successfully applied Let's Encrypt issuer", "issuer", issuerName)
 
@@ -111,11 +111,11 @@ func CheckOrInstallVersion(ctx context.Context, domain string, k8sClient client.
 		installErr := InstallKnative(ctx, domain, issuerName, isKind, k8sClient, ioStreams)
 		if installErr != nil {
 			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to install/reconcile Knative Serving using Operator", "error", installErr)
-			return fmt.Errorf("failed to install/reconcile Knative Serving using Operator: %w", installErr)
+			return "", fmt.Errorf("failed to install/reconcile Knative Serving using Operator: %w", installErr)
 		}
 		_, _ = fmt.Fprintln(ioStreams.Out, "Knative Serving (managed by Operator) installation/reconciliation process completed successfully.")
 	}
 
-	scheme.AddKnative() // Add Knative scheme to the runtime scheme (safe to call multiple times)
-	return nil          // Successful installation or already existed and ready
+	scheme.AddKnative()    // Add Knative scheme to the runtime scheme (safe to call multiple times)
+	return issuerName, nil // Successful installation or already existed and ready
 }
