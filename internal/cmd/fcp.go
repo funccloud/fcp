@@ -13,12 +13,14 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.funccloud.dev/fcp/internal/cmd/install"
+	"go.funccloud.dev/fcp/internal/cmd/pinniped"
 	"go.funccloud.dev/fcp/internal/cmd/plugin"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
+	"k8s.io/kubectl/pkg/cmd/auth"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/cmd/version"
 	"k8s.io/kubectl/pkg/kuberc"
@@ -312,7 +314,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 			if cmd.Name() == cobra.ShellCompRequestCmd {
 				// This is the __complete or __completeNoDesc command which
 				// indicates shell completion has been requested.
-				plugin.SetupPluginCompletion(cmd, args)
+				plugin.SetupPluginCompletion(cmd, args, o.IOStreams)
 			}
 
 			return initProfiling()
@@ -370,7 +372,7 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 	// Add plugin command group to the list of command groups.
 	// The commands are only injected for the scope of showing help and completion, they are not
 	// invoked directly.
-	pluginCommandGroup := plugin.GetPluginCommandGroup(cmds)
+	pluginCommandGroup := plugin.GetPluginCommandGroup(cmds, o.IOStreams)
 	groups = append(groups, pluginCommandGroup)
 
 	templates.ActsAsRootCommand(cmds, filters, groups...)
@@ -381,6 +383,8 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 	cmds.AddCommand(plugin.NewCmdPlugin(o.IOStreams))
 	cmds.AddCommand(version.NewCmdVersion(f, o.IOStreams))
 	cmds.AddCommand(install.NewCmdInstall(f, o.IOStreams))
+	cmds.AddCommand(auth.NewCmdAuth(f, o.IOStreams))
+	cmds.AddCommand(pinniped.NewCmdPinniped(o.IOStreams))
 
 	// Stop warning about normalization of flags. That makes it possible to
 	// add the klog flags later.

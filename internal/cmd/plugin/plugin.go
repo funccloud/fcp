@@ -9,8 +9,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"go.funccloud.dev/fcp/internal/config"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-	"k8s.io/client-go/util/homedir"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -45,12 +46,13 @@ var (
 
 	ValidPluginFilenamePrefixes = []string{"fcp"}
 
-	ValidSubcommandBinaries = map[string]string{}
+	ValidSubcommandBinaries = map[string]string{
+		"helm": "helm",
+	}
 )
 
 func GetDir() string {
-	home := homedir.HomeDir()
-	return filepath.Join(home, ".fcp", "plugins")
+	return filepath.Join(config.GetConfigDir(), "plugins")
 }
 
 func SetDirEnv() {
@@ -274,16 +276,7 @@ func isExecutable(fullPath string) (bool, error) {
 // uniquePathsList deduplicates a given slice of strings without
 // sorting or otherwise altering its order in any way.
 func uniquePathsList(paths []string) []string {
-	seen := map[string]bool{}
-	newPaths := []string{}
-	for _, p := range paths {
-		if seen[p] {
-			continue
-		}
-		seen[p] = true
-		newPaths = append(newPaths, p)
-	}
-	return newPaths
+	return sets.NewString(paths...).UnsortedList()
 }
 
 func hasValidPrefix(filepath string, validPrefixes []string, binariesCommandMap map[string]string) bool {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"go.funccloud.dev/fcp/internal/cmd/plugin"
 	"go.funccloud.dev/fcp/internal/resource"
 	"go.funccloud.dev/fcp/internal/scheme"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -61,7 +62,7 @@ func (o *Options) Validate() error {
 
 func (o *Options) Run(ctx context.Context) error {
 	_, _ = fmt.Fprintf(o.Out, "Installing FCP components with domain %s\n", o.Domain)
-	err := resource.CheckOrInstallVersion(ctx, o.Domain, o.Client, o.IOStreams)
+	err := resource.CheckOrInstallVersion(ctx, o.Domain, plugin.GetDir(), o.Client, o.IOStreams)
 	if err != nil {
 		_, _ = fmt.Fprintf(o.ErrOut, "Error installing FCP components: %v\n", err)
 		return err

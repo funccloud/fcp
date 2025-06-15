@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -15,35 +16,11 @@ import (
 
 // ApplyManifestFromURL downloads a YAML manifest from a URL and applies its resources.
 func ApplyManifestFromURL(ctx context.Context, k8sClient client.Client, ioStreams genericiooptions.IOStreams, url string) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error creating HTTP request", "url", url, "error", err)
-		return fmt.Errorf("error creating request to download manifest: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	manifestBytes, err := DownloadYAMLFromURL(ctx, url, ioStreams)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
 		return fmt.Errorf("error downloading manifest from %s: %w", url, err)
 	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error closing response body for manifest download", "url", url, "error", cerr)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("status code %d", resp.StatusCode)
-		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
-		return fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
-	}
-
-	manifestBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error reading manifest response body", "url", url, "error", err)
-		return fmt.Errorf("error reading manifest: %w", err)
-	}
-
 	err = ApplyManifestYAML(ctx, k8sClient, string(manifestBytes), ioStreams)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error applying manifest", "url", url, "error", err)
@@ -83,4 +60,39 @@ func ApplyManifestYAML(ctx context.Context, k8sClient client.Client, manifestYAM
 		}
 	}
 	return nil
+}
+
+func DownloadYAMLFromURL(ctx context.Context, url string, ioStreams genericiooptions.IOStreams) ([]byte, error) {
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second, // Set a timeout for the HTTP request
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error creating HTTP request", "url", url, "error", err)
+		return nil, fmt.Errorf("error creating request to download manifest: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
+		return nil, fmt.Errorf("error downloading manifest from %s: %w", url, err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error closing response body for manifest download", "url", url, "error", cerr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("status code %d", resp.StatusCode)
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error downloading manifest", "url", url, "error", err)
+		return nil, fmt.Errorf("non-OK status (%d) downloading manifest from %s", resp.StatusCode, url)
+	}
+
+	manifestBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error reading manifest response body", "url", url, "error", err)
+		return nil, fmt.Errorf("error reading manifest: %w", err)
+	}
+	return manifestBytes, nil
 }
