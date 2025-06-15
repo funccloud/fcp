@@ -1,0 +1,26 @@
+---
+apiVersion: tenancy.fcp.funccloud.com/v1alpha1
+kind: Workspace
+metadata:
+  name: felipe@funccloud.com
+spec:
+   type: personal # The type of the workspace.
+   owners:
+    - name: felipe@funccloud.com
+      kind: User
+---
+apiVersion: workload.fcp.funccloud.com/v1alpha1
+kind: Application
+metadata:
+  name: felipe-test-app
+  namespace: felipe@funccloud.com
+spec:
+  domain: example.felipeweb.dev
+  enableTLS: true
+  containers:
+    - image: ghcr.io/knative/helloworld-go:latest
+      ports:
+        - containerPort: 8080
+      env:
+        - name: TARGET
+          value: "Felipe's Test App v1 on FuncCloud Platform"

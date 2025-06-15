@@ -10,9 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	pinnipedcmd "go.pinniped.dev/cmd/pinniped/cmd"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubectl/pkg/util/i18n"
-	"sigs.k8s.io/yaml"
 )
 
 //nolint:gochecknoinits
@@ -68,28 +67,32 @@ func processKubeconfigOutput(outputBuf *bytes.Buffer, streams genericiooptions.I
 	if outputBuf.Len() == 0 {
 		return nil
 	}
-	cfg := clientcmdapi.Config{}
-	err := yaml.Unmarshal(outputBuf.Bytes(), &cfg)
+
+	cfg, err := clientcmd.Load(outputBuf.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal kubeconfig output: %w", err)
+		return fmt.Errorf("failed to load kubeconfig output: %w", err)
 	}
+
 	for _, authInfo := range cfg.AuthInfos {
 		if authInfo.Exec != nil {
 			if authInfo.Exec.Args == nil {
 				authInfo.Exec.Args = []string{}
 			}
-			// Prepend "pinniped" to the exec args if not already present.
-			// This is to ensure that the fcp wrapped pinniped is called.
 			if len(authInfo.Exec.Args) == 0 || authInfo.Exec.Args[0] != "pinniped" {
 				authInfo.Exec.Args = append([]string{"pinniped"}, authInfo.Exec.Args...)
+				authInfo.Exec.InstallHint = "Ensure FuncCloud Platform CLI is installed and configured for authentication."
 			}
 		}
 	}
-	modifiedYAML, err := yaml.Marshal(cfg)
+
+	// Use clientcmd.Write to serialize the config. This will convert it to the v1 format
+	// which uses arrays for clusters, users, and contexts, as expected by kubectl.
+	modifiedConfigBytes, err := clientcmd.Write(*cfg)
 	if err != nil {
-		return fmt.Errorf("failed to marshal modified kubeconfig: %w", err)
+		return fmt.Errorf("failed to serialize modified kubeconfig to v1 format: %w", err)
 	}
-	if _, err := streams.Out.Write(modifiedYAML); err != nil {
+
+	if _, err := streams.Out.Write(modifiedConfigBytes); err != nil {
 		return fmt.Errorf("failed to write output to stream: %w", err)
 	}
 	return nil
