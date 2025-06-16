@@ -323,6 +323,7 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 		maxReplicas = minReplicas // Ensure max is not less than min
 	}
 
+	// Only set autoscaling annotations on the template, not copying all service annotations
 	ksvc.Spec.Template.ObjectMeta.Annotations[autoscaling.MinScaleAnnotationKey] = strconv.Itoa(int(minReplicas))
 	ksvc.Spec.Template.ObjectMeta.Annotations[autoscaling.MaxScaleAnnotationKey] = strconv.Itoa(int(maxReplicas))
 	ksvc.Spec.Template.ObjectMeta.Annotations[autoscaling.InitialScaleAnnotationKey] = strconv.Itoa(int(minReplicas))
@@ -354,16 +355,14 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 	// Configure the template spec
 	ksvc.Spec.Template.Spec.ImagePullSecrets = app.Spec.ImagePullSecrets
 	ksvc.Spec.Template.Spec.Containers = app.Spec.Containers
-	// Ensure labels and annotations from the service are propagated to the template
+	// Ensure labels from the service are propagated to the template
 	if ksvc.Spec.Template.ObjectMeta.Labels == nil {
 		ksvc.Spec.Template.ObjectMeta.Labels = make(map[string]string)
 	}
 	for k, v := range ksvc.Labels { // Copy labels from service meta
 		ksvc.Spec.Template.ObjectMeta.Labels[k] = v
 	}
-	for k, v := range ksvc.Annotations { // Copy annotations from service meta
-		ksvc.Spec.Template.ObjectMeta.Annotations[k] = v
-	}
+	// Do NOT copy all service annotations to the template (prevents unnecessary revision bumps)
 }
 
 // reconcileDomainMapping handles the reconciliation of the DomainMapping for the Application.
