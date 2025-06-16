@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	tenancyv1alpha1 "go.funccloud.dev/fcp/api/tenancy/v1alpha1"
 	workloadv1alpha1 "go.funccloud.dev/fcp/api/workload/v1alpha1"
@@ -183,7 +184,11 @@ func validateWorkspace(workspace *tenancyv1alpha1.Workspace) field.ErrorList {
 			if owner.Kind != "User" {
 				errs = append(errs, field.Invalid(ownersPath.Index(0).Child("kind"), owner.Kind, "owner kind must be User for personal workspaces"))
 			}
-			if owner.Name != workspace.Name {
+			ownerSanitize := strings.ReplaceAll(owner.Name, "@", "-")
+			ownerSanitize = strings.ReplaceAll(ownerSanitize, ".", "-")
+			namespaceSanitize := strings.ReplaceAll(workspace.Name, "@", "-")
+			namespaceSanitize = strings.ReplaceAll(namespaceSanitize, ".", "-")
+			if ownerSanitize != namespaceSanitize {
 				errs = append(errs, field.Invalid(ownersPath.Index(0).Child("name"), owner.Name, "owner name must match workspace name for personal workspaces"))
 			}
 		}

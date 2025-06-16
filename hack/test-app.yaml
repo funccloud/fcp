@@ -2,7 +2,7 @@
 apiVersion: tenancy.fcp.funccloud.com/v1alpha1
 kind: Workspace
 metadata:
-  name: felipe@funccloud.com
+  name: felipe-funccloud-com
 spec:
    type: personal # The type of the workspace.
    owners:
@@ -13,7 +13,7 @@ apiVersion: workload.fcp.funccloud.com/v1alpha1
 kind: Application
 metadata:
   name: felipe-test-app
-  namespace: felipe@funccloud.com
+  namespace: felipe-funccloud-com
 spec:
   domain: example.felipeweb.dev
   enableTLS: true
