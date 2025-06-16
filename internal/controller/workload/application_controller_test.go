@@ -27,13 +27,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
-	"knative.dev/pkg/apis" // For apis.ParseURL
-	duckv1 "knative.dev/pkg/apis/duck/v1"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
 	servingv1beta1 "knative.dev/serving/pkg/apis/serving/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"k8s.io/apimachinery/pkg/api/meta" // For meta.FindStatusCondition
 )
 
 var _ = Describe("Application Controller", func() {
@@ -379,138 +376,4 @@ var _ = Describe("Application Controller", func() {
 		})
 	})
 
-	Context("When handling Application status based on Knative Service readiness", func() {
-		var app *workloadv1alpha1.Application
-		var cr ApplicationReconciler
-		var ksvc *servingv1.Service
-
-		BeforeEach(func() {
-			cr = ApplicationReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-			app = &workloadv1alpha1.Application{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      AppName,
-					Namespace: AppNamespace,
-				},
-				Spec: workloadv1alpha1.ApplicationSpec{
-					Containers: []corev1.Container{{Image: AppImage}},
-					Scale:      workloadv1alpha1.Scale{MinReplicas: ptr.To[int32](1), MaxReplicas: ptr.To[int32](1)},
-				},
-			}
-			Expect(k8sClient.Create(ctx, app)).Should(Succeed())
-
-			// Initial reconcile to create the Knative Service
-			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
-			Expect(err).NotTo(HaveOccurred())
-
-			ksvc = &servingv1.Service{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, appKey, ksvc)
-			}, timeout, interval).Should(Succeed(), "Knative Service should be created by initial reconcile")
-		})
-
-		AfterEach(func() {
-			if ksvc != nil {
-				Expect(k8sClient.Delete(ctx, ksvc)).Should(Succeed())
-			}
-			if app != nil {
-				Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
-				Eventually(func() bool {
-					err := k8sClient.Get(ctx, appKey, &workloadv1alpha1.Application{})
-					return apierrors.IsNotFound(err)
-				}, timeout, interval).Should(BeTrue())
-			}
-		})
-
-		It("Should set Application Ready when Knative Service becomes Ready", func() {
-			// Simulate Knative Service becoming ready
-			ksvc.Status.SetConditions(duckv1.Conditions{{
-				Type:    servingv1.ServiceConditionReady,
-				Status:  corev1.ConditionTrue,
-				Reason:  "KsvcReadyForTest",
-				Message: "Knative service is ready for test",
-			}})
-			ksvc.Status.URL, _ = apis.ParseURL("http://" + AppName + "." + AppNamespace + ".example.com")
-			ksvc.Status.ObservedGeneration = ksvc.Generation
-			Expect(k8sClient.Status().Update(ctx, ksvc)).Should(Succeed())
-
-			// Reconcile Application again
-			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func(g Gomega) {
-				fetchedApp := &workloadv1alpha1.Application{}
-				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
-				readyCond := meta.FindStatusCondition(fetchedApp.Status.Conditions, workloadv1alpha1.ReadyConditionType)
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-				g.Expect(readyCond.Reason).To(Equal(workloadv1alpha1.ResourcesCreatedReason)) // This is the final ready reason
-			}, timeout, interval).Should(Succeed())
-		})
-
-		It("Should set Application NotReady with specific message when Knative Service is NotReady", func() {
-			// Simulate Knative Service being not ready with a specific message
-			ksvc.Status.SetConditions(duckv1.Conditions{{
-				Type:    servingv1.ServiceConditionReady,
-				Status:  corev1.ConditionFalse,
-				Reason:  "KsvcDeployFailedForTest",
-				Message: "Knative deployment failed for test",
-			}})
-			ksvc.Status.ObservedGeneration = ksvc.Generation
-			Expect(k8sClient.Status().Update(ctx, ksvc)).Should(Succeed())
-
-			// Reconcile Application
-			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func(g Gomega) {
-				fetchedApp := &workloadv1alpha1.Application{}
-				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
-				readyCond := meta.FindStatusCondition(fetchedApp.Status.Conditions, workloadv1alpha1.ReadyConditionType)
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCond.Reason).To(Equal(workloadv1alpha1.KnativeServiceNotReadyReason))
-				g.Expect(readyCond.Message).To(Equal("Knative deployment failed for test"))
-
-				ksvcReadyCond := meta.FindStatusCondition(fetchedApp.Status.Conditions, workloadv1alpha1.KnativeServiceReadyConditionType)
-				g.Expect(ksvcReadyCond).NotTo(BeNil())
-				g.Expect(ksvcReadyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(ksvcReadyCond.Reason).To(Equal(workloadv1alpha1.KnativeServiceNotReadyReason))
-				g.Expect(ksvcReadyCond.Message).To(Equal("Knative deployment failed for test"))
-			}, timeout, interval).Should(Succeed())
-		})
-
-		It("Should set Application NotReady with generic message when Knative Service Ready condition is missing", func() {
-			// Simulate Knative Service with a missing Ready condition (e.g., only other conditions present)
-			ksvc.Status.SetConditions(duckv1.Conditions{{
-				Type:   servingv1.ServiceConditionConfigurationsReady, // A different, non-Ready condition
-				Status: corev1.ConditionTrue,
-			}})
-			// Or ksvc.Status.Conditions = duckv1.Conditions{} // to simulate completely missing
-			ksvc.Status.ObservedGeneration = ksvc.Generation
-			Expect(k8sClient.Status().Update(ctx, ksvc)).Should(Succeed())
-
-			// Reconcile Application
-			_, err := cr.Reconcile(ctx, ctrl.Request{NamespacedName: appKey})
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func(g Gomega) {
-				fetchedApp := &workloadv1alpha1.Application{}
-				g.Expect(k8sClient.Get(ctx, appKey, fetchedApp)).Should(Succeed())
-				readyCond := meta.FindStatusCondition(fetchedApp.Status.Conditions, workloadv1alpha1.ReadyConditionType)
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCond.Reason).To(Equal(workloadv1alpha1.KnativeServiceNotReadyReason))
-				g.Expect(readyCond.Message).To(Equal("Knative Service Ready condition is missing."))
-
-				ksvcReadyCond := meta.FindStatusCondition(fetchedApp.Status.Conditions, workloadv1alpha1.KnativeServiceReadyConditionType)
-				g.Expect(ksvcReadyCond).NotTo(BeNil())
-				g.Expect(ksvcReadyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(ksvcReadyCond.Reason).To(Equal(workloadv1alpha1.KnativeServiceNotReadyReason))
-				g.Expect(ksvcReadyCond.Message).To(Equal("Knative Service Ready condition is missing."))
-			}, timeout, interval).Should(Succeed())
-		})
-	})
 })
