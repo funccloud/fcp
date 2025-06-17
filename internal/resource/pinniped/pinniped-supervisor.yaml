@@ -2452,22 +2452,31 @@ spec:
   secretName: pinniped-supervisor-tls-domain
   dnsNames:
   - id.{{ .Domain }}
+  - id-test.{{ .Domain }}
   issuerRef:
     name: {{ .IssuerName }}
     kind: ClusterIssuer
 ---
-apiVersion: projectcontour.io/v1
-kind: HTTPProxy
+aapiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: pinniped-supervisor
+  name: pinniped-supervisor-passthrough
   namespace: pinniped-supervisor
+  annotations:
+    konghq.com/protocol: "tls_passthrough"
 spec:
-  ingressClassName: contour-external
-  virtualhost:
-    fqdn: id.{{ .Domain }}
-    tls:
-      passthrough: true
-  tcpproxy:
-    services:
-      - name: pinniped-supervisor-oidc
-        port: 443
+  ingressClassName: kong # Or your specific Kong ingress class name
+  rules:
+  - host: id.{{ .Domain }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pinniped-supervisor-oidc
+            port:
+              number: 443
+  tls:
+  - hosts:
+    - id.{{ .Domain }}

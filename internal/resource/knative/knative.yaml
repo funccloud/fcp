@@ -21,7 +21,7 @@ spec:
         name: {{ .IssuerName }}
         kind: ClusterIssuer
     network:
-      ingress-class: "contour.ingress.networking.knative.dev"
+      ingress-class: "kong"
       certificate-class: "cert-manager.certificate.networking.knative.dev"
       autocreate-cluster-domain-claims: "true"
       external-domain-tls: Enabled

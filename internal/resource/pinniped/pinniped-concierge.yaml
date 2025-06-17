@@ -1307,18 +1307,26 @@ roleRef:
   name: pinniped-concierge-cluster-info-lister-watcher
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: projectcontour.io/v1
-kind: HTTPProxy
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: pinniped-concierge-impersonation-proxy
   namespace: pinniped-concierge
+  annotations:
+    konghq.com/protocol: "tls_passthrough"
 spec:
-  ingressClassName: contour-external
-  virtualhost:
-    fqdn: server.{{ .Domain }}
-    tls:
-      passthrough: true
-  tcpproxy:
-    services:
-    - name: pinniped-concierge-proxy
-      port: 443
+  ingressClassName: kong # Or your specific Kong ingress class name
+  rules:
+  - host: server.{{ .Domain }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pinniped-concierge-proxy
+            port:
+              number: 443
+  tls:
+  - hosts:
+    - server.{{ .Domain }}

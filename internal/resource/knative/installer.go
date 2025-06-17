@@ -32,7 +32,6 @@ const (
 	// Knative Operator version and URL
 	knativeOperatorVersion = "v1.18.1"
 	knativeVersion         = "v1.18.0"
-	netContourVersion      = "v1.18.0"
 
 	knativeOperatorURL = "https://github.com/knative/operator/releases/download/knative-" +
 		knativeOperatorVersion + "/operator.yaml"
@@ -41,8 +40,7 @@ const (
 	knativeServingDefaultDomainURL = "https://github.com/knative/serving/releases/download/knative-" +
 		knativeVersion + "/serving-default-domain.yaml"
 
-	contourURL = "https://github.com/knative/net-contour/releases/download/knative-" +
-		netContourVersion + "/contour.yaml"
+	kongURL = "https://raw.githubusercontent.com/Kong/kubernetes-ingress-controller/main/deploy/single/all-in-one-dbless.yaml"
 
 	// Knative Operator details
 	knativeOperatorNamespace  = "knative-operator"
@@ -60,11 +58,11 @@ const (
 	checkInterval = 10 * time.Second
 	waitTimeout   = 15 * time.Minute
 
-	// Contour service modification details for Kind
+	// Kong service modification details for Kind
 	httpNodePort    = int64(31080)
 	httpsNodePort   = int64(31443)
-	httpTargetPort  = int64(8080) // Default target for HTTP
-	httpsTargetPort = int64(8443) // Default target for HTTPS
+	httpTargetPort  = int64(80)  // Kong uses 80 for HTTP
+	httpsTargetPort = int64(443) // Kong uses 443 for HTTPS
 )
 
 // InstallKnative installs Knative Serving using the Knative Operator.
@@ -78,34 +76,34 @@ func InstallKnative(
 	applyCtx, cancel := context.WithTimeout(ctx, applyTimeout)
 	defer cancel()
 
-	// 1. Fetch and Apply Contour manifest
-	_, _ = fmt.Fprintln(ioStreams.Out, "Fetching Contour manifest from...", "url", contourURL)
-	contourManifestBytes, err := yamlutil.DownloadYAMLFromURL(applyCtx, contourURL, ioStreams)
+	// 1. Fetch and Apply Kong manifest
+	_, _ = fmt.Fprintln(ioStreams.Out, "Fetching Kong manifest from...", "url", kongURL)
+	kongManifestBytes, err := yamlutil.DownloadYAMLFromURL(applyCtx, kongURL, ioStreams)
 	if err != nil {
-		return fmt.Errorf("failed to download Contour manifest from %s: %w", contourURL, err)
+		return fmt.Errorf("failed to download Kong manifest from %s: %w", kongURL, err)
 	}
-	contourManifestContent := string(contourManifestBytes)
+	kongManifestContent := string(kongManifestBytes)
 
-	// Add tolerations to Deployments and DaemonSets in the Contour manifest
-	_, _ = fmt.Fprintln(ioStreams.Out, "Adding tolerations to Contour manifest...")
-	modifiedContourManifestWithTolerations, err := addTolerationsToManifest(contourManifestContent, ioStreams)
+	// Add tolerations to Deployments and DaemonSets in the Kong manifest
+	_, _ = fmt.Fprintln(ioStreams.Out, "Adding tolerations to Kong manifest...")
+	modifiedKongManifestWithTolerations, err := addTolerationsToManifest(kongManifestContent, ioStreams)
 	if err != nil {
-		return fmt.Errorf("failed to add tolerations to Contour manifest: %w", err)
+		return fmt.Errorf("failed to add tolerations to Kong manifest: %w", err)
 	}
-	contourManifestContent = modifiedContourManifestWithTolerations
+	kongManifestContent = modifiedKongManifestWithTolerations
 
 	if isKind {
-		// The primary logging for this step is now within modifyContourServiceForKind
-		modifiedManifest, err := modifyContourServiceForKind(contourManifestContent, ioStreams)
+		// The primary logging for this step is now within modifyKongServiceForKind
+		modifiedManifest, err := modifyKongServiceForKind(kongManifestContent, ioStreams)
 		if err != nil {
-			return fmt.Errorf("failed to modify Contour manifest for Kind: %w", err)
+			return fmt.Errorf("failed to modify Kong manifest for Kind: %w", err)
 		}
-		contourManifestContent = modifiedManifest
+		kongManifestContent = modifiedManifest
 	}
 
-	_, _ = fmt.Fprintln(ioStreams.Out, "Applying Contour manifest...")
-	if err := yamlutil.ApplyManifestYAML(applyCtx, k8sClient, contourManifestContent, ioStreams); err != nil {
-		return fmt.Errorf("failed to apply Contour manifest: %w", err)
+	_, _ = fmt.Fprintln(ioStreams.Out, "Applying Kong manifest...")
+	if err := yamlutil.ApplyManifestYAML(applyCtx, k8sClient, kongManifestContent, ioStreams); err != nil {
+		return fmt.Errorf("failed to apply Kong manifest: %w", err)
 	}
 
 	// 2. Apply Knative Operator manifest
@@ -479,9 +477,10 @@ func modifyLoadBalancerServicesToNodePort(manifestYAML string, ioStreams generic
 	return resultBuilder.String(), nil
 }
 
-func modifyContourServiceForKind(manifestYAML string, ioStreams genericiooptions.IOStreams) (string, error) {
+// modifyKongServiceForKind modifies Kong manifest for Kind clusters
+func modifyKongServiceForKind(manifestYAML string, ioStreams genericiooptions.IOStreams) (string, error) {
 	_, _ = fmt.Fprintln(ioStreams.Out,
-		"Modifying LoadBalancer services in Contour manifest to NodePort for Kind cluster...")
+		"Modifying LoadBalancer services in Kong manifest to NodePort for Kind cluster...")
 	return modifyLoadBalancerServicesToNodePort(manifestYAML, ioStreams)
 }
 
