@@ -1307,26 +1307,18 @@ roleRef:
   name: pinniped-concierge-cluster-info-lister-watcher
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: configuration.konghq.com/v1beta1
+kind: TCPIngress
 metadata:
-  name: pinniped-concierge-impersonation-proxy
+  name: pinniped-concierge-impersonation-proxy-tcp
   namespace: pinniped-concierge
   annotations:
-    konghq.com/protocol: "tls_passthrough"
+    # This is the correct annotation to enable passthrough for a TCPIngress
+    konghq.com/protocols: "tls_passthrough"
 spec:
-  ingressClassName: kong # Or your specific Kong ingress class name
   rules:
+    # For passthrough, you define the SNI host to match on
   - host: server.{{ .Domain }}
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: pinniped-concierge-proxy
-            port:
-              number: 443
-  tls:
-  - hosts:
-    - server.{{ .Domain }}
+    backend:
+      serviceName: pinniped-concierge-proxy
+      servicePort: 443

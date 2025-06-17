@@ -2457,26 +2457,18 @@ spec:
     name: {{ .IssuerName }}
     kind: ClusterIssuer
 ---
-aapiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: configuration.konghq.com/v1beta1
+kind: TCPIngress
 metadata:
-  name: pinniped-supervisor-passthrough
+  name: pinniped-supervisor-tcp
   namespace: pinniped-supervisor
   annotations:
-    konghq.com/protocol: "tls_passthrough"
+    # This is the correct annotation to enable passthrough for a TCPIngress
+    konghq.com/protocols: "tls_passthrough"
 spec:
-  ingressClassName: kong # Or your specific Kong ingress class name
   rules:
+    # For passthrough, you define the SNI host to match on
   - host: id.{{ .Domain }}
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: pinniped-supervisor-oidc
-            port:
-              number: 443
-  tls:
-  - hosts:
-    - id.{{ .Domain }}
+    backend:
+      serviceName: pinniped-supervisor-oidc
+      servicePort: 443
