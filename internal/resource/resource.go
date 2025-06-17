@@ -8,6 +8,7 @@ import (
 	"go.funccloud.dev/fcp/internal/resource/helm"
 	"go.funccloud.dev/fcp/internal/resource/kind"
 	"go.funccloud.dev/fcp/internal/resource/knative"
+	"go.funccloud.dev/fcp/internal/resource/kong"
 	"go.funccloud.dev/fcp/internal/resource/pinniped"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +31,16 @@ func CheckOrInstallVersion(ctx context.Context, domain, pluginDir string, k8sCli
 		_, _ = fmt.Fprintln(ioStreams.Out, "Did not detect Kind cluster (kindnet daemonset not found or error occurred).")
 	}
 
+	err = helm.EnsureHelmBinary(ioStreams, pluginDir)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error ensuring Helm binary", "error", err)
+		return err
+	}
+	err = kong.CheckOrInstallVersion(ctx, pluginDir, onKind, ioStreams)
+	if err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Kong", "error", err)
+		return err
+	}
 	// Check if cert-manager is installed
 	err = certmanager.CheckOrInstallVersion(ctx, k8sClient, ioStreams)
 	if err != nil {
@@ -48,12 +59,6 @@ func CheckOrInstallVersion(ctx context.Context, domain, pluginDir string, k8sCli
 	err = pinniped.CheckOrInstallVersion(ctx, k8sClient, domain, issuerName, ioStreams, onKind)
 	if err != nil {
 		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error checking or installing Pinniped", "error", err)
-		return err
-	}
-
-	err = helm.EnsureHelmBinary(ioStreams, pluginDir)
-	if err != nil {
-		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Error ensuring Helm binary", "error", err)
 		return err
 	}
 	return nil
