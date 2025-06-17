@@ -24,7 +24,7 @@ require (
 	knative.dev/networking v0.0.0-20250424014624-16635c6d8dcc
 	knative.dev/operator v0.45.1
 	knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3
-	knative.dev/serving v0.45.0
+	knative.dev/serving v0.45.1
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.4.0
 )
