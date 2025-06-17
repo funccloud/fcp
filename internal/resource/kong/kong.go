@@ -60,8 +60,6 @@ func helmUpdateRepo(ctx context.Context, helmBin string, ioStreams genericioopti
 
 func isKongInstalled(ctx context.Context, helmBin string, ioStreams genericiooptions.IOStreams) (bool, error) {
 	cmd := exec.CommandContext(ctx, helmBin, "list", "--all", "--filter", kongChartName, "--output", "json")
-	cmd.Stdout = ioStreams.Out
-	cmd.Stderr = ioStreams.ErrOut
 	cmd.Stdin = ioStreams.In
 	output, err := cmd.Output()
 	if err != nil {
