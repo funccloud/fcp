@@ -4,9 +4,6 @@ metadata:
   name: knative-serving
   namespace: knative-serving
 spec:
-  ingress:
-    contour:
-      enabled: true
   config:
     features:
       multi-container: "enabled"
