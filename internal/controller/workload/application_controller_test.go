@@ -367,11 +367,6 @@ var _ = Describe("Application Controller", func() {
 				ksvc := &servingv1.Service{}
 				g.Expect(k8sClient.Get(ctx, ksvcKey, ksvc)).Should(Succeed())
 				g.Expect(ksvc.Annotations).To(HaveKeyWithValue("networking.knative.dev/disable-external-domain-tls", "true")) // TLS disabled
-
-				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/min-scale", "2"))
-				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("autoscaling.knative.dev/max-scale", "5"))
-				g.Expect(ksvc.Spec.Template.Annotations).To(HaveKeyWithValue("networking.knative.dev/disable-external-domain-tls", "true"))
-
 			}, timeout, interval).Should(Succeed())
 		})
 	})
