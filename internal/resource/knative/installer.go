@@ -28,6 +28,9 @@ import (
 //go:embed knative.yaml
 var knativeServingYAML []byte // Embed the knative.yaml file
 
+//go:embed default-issuer.yaml
+var defaultIssuerYAML string // Embed the default issuer YAML
+
 const (
 	// Knative Operator version and URL
 	knativeOperatorVersion = "v1.18.1"
@@ -114,7 +117,15 @@ func InstallKnative(
 		return fmt.Errorf("failed to apply Knative Operator manifest from %s: %w", knativeOperatorURL, err)
 	}
 
-	// 3. Wait for Knative Operator deployment to be ready
+	// 3/ Instzll Default Issuer for Knative Serving
+	_, _ = fmt.Fprintln(ioStreams.Out, "Applying default issuer manifest for Knative Serving...")
+	if err := yamlutil.ApplyManifestYAML(applyCtx, k8sClient, defaultIssuerYAML, ioStreams); err != nil {
+		_, _ = fmt.Fprintln(ioStreams.ErrOut, "Failed to apply default issuer manifest for Knative Serving",
+			"error", err)
+		return fmt.Errorf("failed to apply default issuer manifest for Knative Serving: %w", err)
+	}
+
+	// 4. Wait for Knative Operator deployment to be ready
 	operatorNN := types.NamespacedName{Namespace: knativeOperatorNamespace, Name: knativeOperatorDeployment}
 	_, _ = fmt.Fprintln(ioStreams.Out, "Waiting for Knative Operator deployment to become ready...",
 		"namespace", operatorNN.Namespace, "name", operatorNN.Name)

@@ -12,10 +12,10 @@ spec:
 apiVersion: workload.fcp.funccloud.com/v1alpha1
 kind: Application
 metadata:
-  name: felipe-test-app
+  name: felipes-test-app
   namespace: felipe-funccloud-com
 spec:
-  domain: example.felipeweb.dev
+  domain: example.fcp.funccloud.dev
   enableTLS: true
   containers:
     - image: ghcr.io/knative/helloworld-go:latest

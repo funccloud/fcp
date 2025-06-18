@@ -20,6 +20,12 @@ spec:
       issuerRef: |
         name: {{ .IssuerName }}
         kind: ClusterIssuer
+      clusterLocalIssuerRef: |
+        kind: ClusterIssuer
+        name: knative-selfsigned-issuer
+      systemInternalIssuerRef: |
+        kind: ClusterIssuer
+        name: knative-selfsigned-issuer
     network:
       ingress-class: "contour.ingress.networking.knative.dev"
       certificate-class: "cert-manager.certificate.networking.knative.dev"

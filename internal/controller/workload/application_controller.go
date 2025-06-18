@@ -168,7 +168,7 @@ func (r *ApplicationReconciler) reconcileResources(
 	}
 
 	// 2. Reconcile Domain Mapping
-	dm, err := r.reconcileDomainMapping(ctx, l, app, ksvc)
+	_, err = r.reconcileDomainMapping(ctx, l, app, ksvc)
 	if err != nil {
 		return false, fmt.Errorf("failed to reconcile Domain Mapping: %w", err)
 	}
@@ -176,22 +176,6 @@ func (r *ApplicationReconciler) reconcileResources(
 	// 3. Update Status URLs
 	r.updateStatusURLs(l, app, ksvc)
 
-	if !requeueNeeded && *app.Spec.EnableTLS {
-		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, ksvc, func() error {
-			ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
-			return nil
-		})
-		if err != nil {
-			return true, fmt.Errorf("failed to force TLS redirect: %w", err)
-		}
-		_, err = controllerutil.CreateOrUpdate(ctx, r.Client, dm, func() error {
-			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
-			return nil
-		})
-		if err != nil {
-			return true, fmt.Errorf("failed to force TLS redirect: %w", err)
-		}
-	}
 	// If we reached here without returning, no requeue is needed and no error occurred
 	return requeueNeeded, nil
 }
@@ -309,7 +293,11 @@ func (r *ApplicationReconciler) mutateKnativeService(app *workloadv1alpha1.Appli
 		enableTLS = *app.Spec.EnableTLS
 	}
 	ksvc.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-	ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
+	if enableTLS {
+		ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
+	} else {
+		ksvc.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
+	}
 	// Default Scale values if nil
 	minReplicas := int32(0) // Default minReplicas
 	if app.Spec.Scale.MinReplicas != nil {
@@ -450,7 +438,11 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 			enableTLS = *app.Spec.EnableTLS
 		}
 		dm.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-		dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
+		if enableTLS {
+			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
+		} else {
+			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
+		}
 
 		// Set the reference to the Knative Service
 		dm.Spec.Ref = duckv1.KReference{
