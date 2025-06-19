@@ -22,7 +22,7 @@ COPY . .
 ARG APP_NAME=ui
 # Build the application for SSR
 # This runs 'ng build' and 'ng run <app-name>:server'
-RUN ng run build ${APP_NAME}
+RUN npm run build ${APP_NAME}
 
 # =================================================================
 # Stage 2: Production Stage
