@@ -22,7 +22,7 @@ COPY . .
 ARG APP_NAME=ui
 # Build the application for SSR
 # This runs 'ng build' and 'ng run <app-name>:server'
-RUN npm run build -- --app-name=${APP_NAME}
+RUN ng run build ${APP_NAME}
 
 # =================================================================
 # Stage 2: Production Stage
@@ -56,4 +56,4 @@ COPY --from=build /app/dist/${APP_NAME} ./dist/${APP_NAME}
 EXPOSE 4000
 
 # The command to start the SSR server
-CMD [ "node", "dist/ui/server/main.js" ]
+CMD [ "node", "dist/${APP_NAME}/server/server.mjs" ]

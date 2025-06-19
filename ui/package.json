@@ -9,6 +9,7 @@
     "test": "ng test",
     "serve:ssr:ui": "node dist/ui/server/server.mjs"
   },
+  "type": "module",
   "private": true,
   "dependencies": {
     "@angular/common": "^20.0.0",
