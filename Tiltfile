@@ -7,7 +7,7 @@ watch_settings(ignore=['bin'])
 # --- Configuration ---
 REGISTRY = 'ghcr.io/funccloud/fcp' # Or use read_json('tilt_config.json').get('registry', 'default_registry')
 VERSION = 'latest' # Read version from env var, default to latest
-APPS = ['manager']
+APPS = ['manager', 'ui']
 DEFAULT_APP = 'manager' # App used for single-app commands if needed
 
 # --- Helper Functions ---
@@ -95,8 +95,24 @@ local_resource('un-crd', 'bin/kustomize build config/crd | kubectl delete -f -',
 
 
 # --- Build and Live Update Each App (Docker Build part) ---
+# UI-specific build
+ui_img = '{}/{}:{}'.format(REGISTRY, 'ui', VERSION)
+docker_build(
+    ui_img,
+    './ui',
+    dockerfile='./ui/Dockerfile',
+    live_update=[
+        # Sync local changes to the container
+        sync('./ui/src', '/app/src'),
+        # Re-run npm install and build on package.json changes
+        run('npm install && npm run build', trigger=['./ui/package.json'])
+    ]
+)
 app_images = [] # Collect image names for dependency
 for app in APPS:
+    if app == 'ui':
+        app_images.append(ui_img)
+        continue
     app_img = '{}/{}:{}'.format(REGISTRY, app, VERSION) # Use VERSION
     app_images.append(app_img) # Add image to list for later dependency
     app_binary_path = './bin/{}'.format(app)

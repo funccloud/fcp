@@ -3,7 +3,7 @@
 # Purpose: Install dependencies and build the Angular application.
 # The resulting image from this stage will be large, but it's temporary.
 # =================================================================
-ARG NODE_VERSION=20.14.0
+ARG NODE_VERSION=20.19.0
 FROM node:${NODE_VERSION}-alpine AS build
 
 # Set the working directory
@@ -36,10 +36,10 @@ WORKDIR /app
 
 # Argument for the application name, must be repeated in this stage
 ARG APP_NAME=ui
+ENV APP_NAME=${APP_NAME}
 
 # Create a non-root user for better security
 RUN addgroup -S angular && adduser -S angular -G angular
-USER angular
 
 # Copy only the necessary production dependencies manifest
 COPY package*.json ./
@@ -51,9 +51,15 @@ RUN npm ci --omit=dev
 # This is the magic of multi-stage builds
 COPY --from=build /app/dist/${APP_NAME} ./dist/${APP_NAME}
 
+# Change ownership to non-root user
+RUN chown -R angular:angular /app
+
+# Switch to the non-root user
+USER angular
+
 # Expose the port the server will run on.
 # You can change this, but make sure it matches your server.ts config.
 EXPOSE 4000
 
 # The command to start the SSR server
-CMD [ "node", "dist/${APP_NAME}/server/server.mjs" ]
+CMD ["/bin/sh", "-c", "node dist/$APP_NAME/server/server.mjs"]
