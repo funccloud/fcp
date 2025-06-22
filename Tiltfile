@@ -104,8 +104,6 @@ docker_build(
     live_update=[
         # Sync local changes to the container
         sync('./ui', '/app'),
-        # Re-run npm install and build on package.json changes
-        run('npm install && npm run build', trigger=['./ui'])
     ]
 )
 app_images = [] # Collect image names for dependency
