@@ -1491,9 +1491,11 @@ spec:
                   - name
                   type: object
                 type: array
-              domain:
-                description: Domain is the custom domain of the application
-                type: string
+              domains:
+                description: Domains is the custom domains of the application
+                items:
+                  type: string
+                type: array
               enableTLS:
                 description: EnableTLS indicates whether to enable TLS for the application
                 type: boolean

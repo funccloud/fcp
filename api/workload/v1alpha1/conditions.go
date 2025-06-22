@@ -28,4 +28,5 @@ const (
 	DomainMappingCreationFailedReason = "DomainMappingCreationFailed"
 	DomainMappingNotConfiguredReason  = "DomainMappingNotConfigured"
 	DomainMappingReadyReason          = "DomainMappingReady"
+	DomainMappingCleanupFailedReason  = "DomainMappingCleanupFailed" // Added
 )

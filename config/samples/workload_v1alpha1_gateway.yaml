@@ -7,7 +7,7 @@ metadata:
   name: gateway
   namespace: e2e
 spec:
-  domain: gateway.127.0.0.1.sslip.io
+  domains: [gateway.127.0.0.1.sslip.io]
   enableTLS: false
   containers:
     - image: kong:latest
