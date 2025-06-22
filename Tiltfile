@@ -103,7 +103,7 @@ docker_build(
     dockerfile='./ui/Dockerfile',
     live_update=[
         # Sync local changes to the container
-        sync('./ui/src', '/app/src'),
+        sync('./ui', '/app'),
         # Re-run npm install and build on package.json changes
         run('npm install && npm run build', trigger=['./ui'])
     ]
