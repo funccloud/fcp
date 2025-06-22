@@ -5,17 +5,17 @@ import {
 } from '@angular/core';
 import { provideRouter } from '@angular/router';
 
-import { routes } from './app.routes';
 import {
   provideClientHydration,
-  withEventReplay,
+  withIncrementalHydration,
 } from '@angular/platform-browser';
+import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZonelessChangeDetection(),
-    provideClientHydration(withEventReplay()),
+    provideClientHydration(withIncrementalHydration()),
     provideRouter(routes),
   ],
 };
