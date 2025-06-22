@@ -325,6 +325,10 @@ var _ = Describe("Manager", Ordered, func() {
 				out, err = utils.Run(cmd)
 				Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
 				Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
+				cmd = exec.Command("curl", "-v", "http://app.127.0.0.1.sslip.io")
+				out, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to get application resource")
+				Expect(out).To(ContainSubstring("Go Sample v1"), "Failed to get application resource")
 			}
 			Eventually(callApp, 10*time.Minute, 10*time.Second).Should(Succeed())
 			By("cleaning up the application resource")

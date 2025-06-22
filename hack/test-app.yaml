@@ -15,7 +15,7 @@ metadata:
   name: felipes-test-app
   namespace: felipe-funccloud-com
 spec:
-  domain: example.fcp.funccloud.dev
+  domains: [example.fcp.funccloud.dev, example.felipeweb.dev]
   enableTLS: true
   containers:
     - image: ghcr.io/knative/helloworld-go:latest
