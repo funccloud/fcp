@@ -553,25 +553,18 @@ func (r *ApplicationReconciler) updateStatusURLs(
 
 	// Add the custom domain URL if configured and DomainMapping is ready
 	if len(app.Spec.Domains) > 0 {
-		// Check the DomainMapping status condition we set earlier
-		// Use embedded Status struct's GetCondition method
-		dmCondition := app.Status.GetCondition(workloadv1alpha1.DomainMappingReadyConditionType)
-		if dmCondition != nil && dmCondition.Status == metav1.ConditionTrue {
-			scheme := "http"
-			// Default EnableTLS to true if nil or not set
-			enableTLS := workloadv1alpha1.DefaultEnableTLS
-			if app.Spec.EnableTLS != nil {
-				enableTLS = *app.Spec.EnableTLS
-			}
-			if enableTLS {
-				scheme = "https"
-			}
-			for _, domain := range app.Spec.Domains {
-				// Construct the custom domain URL
-				urls = append(urls, fmt.Sprintf("%s://%s", scheme, domain))
-			}
-		} else {
-			l.Info("DomainMapping not ready or not configured, skipping custom domains URLs", "domains", app.Spec.Domains)
+		scheme := "http"
+		// Default EnableTLS to true if nil or not set
+		enableTLS := workloadv1alpha1.DefaultEnableTLS
+		if app.Spec.EnableTLS != nil {
+			enableTLS = *app.Spec.EnableTLS
+		}
+		if enableTLS {
+			scheme = "https"
+		}
+		for _, domain := range app.Spec.Domains {
+			// Construct the custom domain URL
+			urls = append(urls, fmt.Sprintf("%s://%s", scheme, domain))
 		}
 	}
 
