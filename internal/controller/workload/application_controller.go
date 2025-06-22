@@ -374,13 +374,12 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 		return fmt.Errorf("knative service is nil, cannot proceed with domain mapping reconciliation")
 	}
 
-	l = l.WithValues("domain", app.Spec.Domains)
+	l = l.WithValues("domains", app.Spec.Domains)
 	l.Info("Reconciling")
 	for _, domain := range app.Spec.Domains {
 		// --- Check for conflicting DomainMapping before CreateOrUpdate ---
 		existingDM := &servingv1beta1.DomainMapping{}
 		err := r.Get(ctx, client.ObjectKey{Name: domain, Namespace: app.Namespace}, existingDM)
-
 		if err != nil {
 			// Handle errors other than NotFound
 			if !apierrors.IsNotFound(err) {
@@ -391,7 +390,7 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 					Reason:  workloadv1alpha1.DomainMappingCheckFailedReason,
 					Message: fmt.Sprintf("Failed to check for existing DomainMapping: %v", err),
 				})
-				return fmt.Errorf("failed to check for existing DomainMapping %s: %w", app.Spec.Domains, err)
+				return fmt.Errorf("failed to check for existing DomainMapping %s: %w", domain, err)
 			}
 			// If err is NotFound, we can proceed to CreateOrUpdate below.
 		} else {
@@ -572,7 +571,7 @@ func (r *ApplicationReconciler) updateStatusURLs(
 				urls = append(urls, fmt.Sprintf("%s://%s", scheme, domain))
 			}
 		} else {
-			l.Info("DomainMapping not ready or not configured, skipping custom domain URL", "domain", app.Spec.Domains)
+			l.Info("DomainMapping not ready or not configured, skipping custom domains URLs", "domains", app.Spec.Domains)
 		}
 	}
 
