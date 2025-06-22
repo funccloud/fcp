@@ -163,7 +163,7 @@ var _ = Describe("Application Controller", func() {
 							Image: AppImage,
 						},
 					},
-					Domain: AppDomain,
+					Domains: []string{AppDomain},
 					Scale: workloadv1alpha1.Scale{ // Removed pointer
 						MinReplicas: ptr.To[int32](1),
 						MaxReplicas: ptr.To[int32](1),

@@ -79,8 +79,8 @@ type ApplicationSpec struct {
 	// EnableTLS indicates whether to enable TLS for the application
 	// +kubebuilder:validation:Required
 	EnableTLS *bool `json:"enableTLS,omitempty"`
-	// Domain is the custom domain of the application
-	Domain string `json:"domain,omitempty"`
+	// Domains is the custom domains of the application
+	Domains []string `json:"domains,omitempty"`
 }
 
 type Scale struct {

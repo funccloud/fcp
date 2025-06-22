@@ -19,6 +19,7 @@ package workload
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -168,7 +169,7 @@ func (r *ApplicationReconciler) reconcileResources(
 	}
 
 	// 2. Reconcile Domain Mapping
-	_, err = r.reconcileDomainMapping(ctx, l, app, ksvc)
+	err = r.reconcileDomainMapping(ctx, l, app, ksvc)
 	if err != nil {
 		return false, fmt.Errorf("failed to reconcile Domain Mapping: %w", err)
 	}
@@ -359,12 +360,8 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 	l logr.Logger,
 	app *workloadv1alpha1.Application,
 	ksvc *servingv1.Service, // Knative Service must be ready or reconciled before this
-) (*servingv1beta1.DomainMapping, error) {
+) error {
 	l = l.WithValues("resource", "DomainMapping")
-	if app.Spec.Domain == "" {
-		l.Info("Domain not specified in spec, ensuring any owned DomainMapping is deleted.")
-		return nil, r.cleanupOwnedDomainMappings(ctx, l, app)
-	}
 	if ksvc == nil {
 		// Should not happen if reconcileResources calls this correctly, but defensive check
 		l.Info("Knative Service is nil, cannot reconcile DomainMapping yet.")
@@ -374,110 +371,118 @@ func (r *ApplicationReconciler) reconcileDomainMapping(
 			Reason:  workloadv1alpha1.KnativeServiceNotReadyReason,
 			Message: "Waiting for Knative Service before reconciling DomainMapping.",
 		})
-		return nil, fmt.Errorf("knative service is nil, cannot proceed with domain mapping reconciliation")
+		return fmt.Errorf("knative service is nil, cannot proceed with domain mapping reconciliation")
 	}
 
-	l = l.WithValues("domain", app.Spec.Domain)
+	l = l.WithValues("domains", app.Spec.Domains)
 	l.Info("Reconciling")
-
-	// --- Check for conflicting DomainMapping before CreateOrUpdate ---
-	existingDM := &servingv1beta1.DomainMapping{}
-	err := r.Get(ctx, client.ObjectKey{Name: app.Spec.Domain, Namespace: app.Namespace}, existingDM)
-
-	if err != nil {
-		// Handle errors other than NotFound
-		if !apierrors.IsNotFound(err) {
-			l.Error(err, "Failed to check for existing DomainMapping")
-			app.Status.SetCondition(metav1.Condition{
-				Type:    workloadv1alpha1.DomainMappingReadyConditionType,
-				Status:  metav1.ConditionUnknown,
-				Reason:  workloadv1alpha1.DomainMappingCheckFailedReason,
-				Message: fmt.Sprintf("Failed to check for existing DomainMapping: %v", err),
-			})
-			return nil, fmt.Errorf("failed to check for existing DomainMapping %s: %w", app.Spec.Domain, err)
+	for _, domain := range app.Spec.Domains {
+		// --- Check for conflicting DomainMapping before CreateOrUpdate ---
+		existingDM := &servingv1beta1.DomainMapping{}
+		err := r.Get(ctx, client.ObjectKey{Name: domain, Namespace: app.Namespace}, existingDM)
+		if err != nil {
+			// Handle errors other than NotFound
+			if !apierrors.IsNotFound(err) {
+				l.Error(err, "Failed to check for existing DomainMapping")
+				app.Status.SetCondition(metav1.Condition{
+					Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+					Status:  metav1.ConditionUnknown,
+					Reason:  workloadv1alpha1.DomainMappingCheckFailedReason,
+					Message: fmt.Sprintf("Failed to check for existing DomainMapping: %v", err),
+				})
+				return fmt.Errorf("failed to check for existing DomainMapping %s: %w", domain, err)
+			}
+			// If err is NotFound, we can proceed to CreateOrUpdate below.
+		} else {
+			// DomainMapping exists, check if it belongs to a different app
+			existingAppLabel, exists := existingDM.Labels[workloadv1alpha1.ApplicationLabel]
+			if exists && existingAppLabel != app.Name {
+				conflictErr := fmt.Errorf("domain mapping %s already exists and is linked to a different application %s",
+					existingDM.Name, existingAppLabel)
+				l.Error(conflictErr, "DomainMapping conflict detected")
+				app.Status.SetCondition(metav1.Condition{
+					Type:    workloadv1alpha1.ReadyConditionType,
+					Status:  metav1.ConditionFalse,
+					Reason:  workloadv1alpha1.DomainMappingConflictReason,
+					Message: conflictErr.Error(),
+				})
+				return conflictErr // Early return on conflict
+			}
 		}
-		// If err is NotFound, we can proceed to CreateOrUpdate below.
-	} else {
-		// DomainMapping exists, check if it belongs to a different app
-		existingAppLabel, exists := existingDM.Labels[workloadv1alpha1.ApplicationLabel]
-		if exists && existingAppLabel != app.Name {
-			conflictErr := fmt.Errorf("domain mapping %s already exists and is linked to a different application %s",
-				existingDM.Name, existingAppLabel)
-			l.Error(conflictErr, "DomainMapping conflict detected")
+
+		// --- Reconcile the DomainMapping using CreateOrUpdate ---
+		dm := &servingv1beta1.DomainMapping{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      domain,
+				Namespace: app.Namespace,
+			},
+		}
+
+		opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, dm, func() error {
+			// Set the application label
+			if dm.Labels == nil {
+				dm.Labels = make(map[string]string)
+			}
+			dm.Labels[workloadv1alpha1.ApplicationLabel] = app.Name
+
+			// Set annotations for Domain Mapping
+			if dm.Annotations == nil {
+				dm.Annotations = make(map[string]string)
+			}
+			enableTLS := workloadv1alpha1.DefaultEnableTLS
+			if app.Spec.EnableTLS != nil {
+				enableTLS = *app.Spec.EnableTLS
+			}
+			dm.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
+			if enableTLS {
+				dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
+			} else {
+				dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
+			}
+
+			// Set the reference to the Knative Service
+			dm.Spec.Ref = duckv1.KReference{
+				APIVersion: servingv1.SchemeGroupVersion.String(),
+				Kind:       "Service",
+				Namespace:  ksvc.Namespace, // Use namespace from the ready ksvc
+				Name:       ksvc.Name,      // Use name from the ready ksvc
+			}
+
+			// Set the controller reference
+			return controllerutil.SetControllerReference(app, dm, r.Scheme)
+		})
+
+		if err != nil {
+			// Error from CreateOrUpdate
 			app.Status.SetCondition(metav1.Condition{
 				Type:    workloadv1alpha1.ReadyConditionType,
 				Status:  metav1.ConditionFalse,
-				Reason:  workloadv1alpha1.DomainMappingConflictReason,
-				Message: conflictErr.Error(),
+				Reason:  workloadv1alpha1.DomainMappingCreationFailedReason,
+				Message: err.Error(),
 			})
-			return nil, conflictErr // Early return on conflict
+			return fmt.Errorf("failed to reconcile DomainMapping %s: %w", dm.Name, err)
 		}
-	}
-
-	// --- Reconcile the DomainMapping using CreateOrUpdate ---
-	dm := &servingv1beta1.DomainMapping{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      app.Spec.Domain,
-			Namespace: app.Namespace,
-		},
-	}
-
-	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, dm, func() error {
-		// Set the application label
-		if dm.Labels == nil {
-			dm.Labels = make(map[string]string)
+		if opResult != controllerutil.OperationResultNone {
+			l.Info("DomainMapping reconciled", "operation", opResult)
 		}
-		dm.Labels[workloadv1alpha1.ApplicationLabel] = app.Name
-
-		// Set annotations for Domain Mapping
-		if dm.Annotations == nil {
-			dm.Annotations = make(map[string]string)
-		}
-		enableTLS := workloadv1alpha1.DefaultEnableTLS
-		if app.Spec.EnableTLS != nil {
-			enableTLS = *app.Spec.EnableTLS
-		}
-		dm.Annotations[networking.DisableExternalDomainTLSAnnotationKey] = strconv.FormatBool(!enableTLS)
-		if enableTLS {
-			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionRedirected)
-		} else {
-			dm.Annotations[networking.HTTPProtocolAnnotationKey] = string(netv1alpha1.HTTPOptionEnabled)
-		}
-
-		// Set the reference to the Knative Service
-		dm.Spec.Ref = duckv1.KReference{
-			APIVersion: servingv1.SchemeGroupVersion.String(),
-			Kind:       "Service",
-			Namespace:  ksvc.Namespace, // Use namespace from the ready ksvc
-			Name:       ksvc.Name,      // Use name from the ready ksvc
-		}
-
-		// Set the controller reference
-		return controllerutil.SetControllerReference(app, dm, r.Scheme)
-	})
-
-	if err != nil {
-		// Error from CreateOrUpdate
 		app.Status.SetCondition(metav1.Condition{
-			Type:    workloadv1alpha1.ReadyConditionType,
-			Status:  metav1.ConditionFalse,
-			Reason:  workloadv1alpha1.DomainMappingCreationFailedReason,
-			Message: err.Error(),
+			Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+			Status:  metav1.ConditionTrue,
+			Reason:  workloadv1alpha1.DomainMappingReadyReason,
+			Message: fmt.Sprintf("DomainMapping %s created/updated", dm.Name),
 		})
-		return nil, fmt.Errorf("failed to reconcile DomainMapping %s: %w", dm.Name, err)
 	}
-	if opResult != controllerutil.OperationResultNone {
-		l.Info("DomainMapping reconciled", "operation", opResult)
+	if err := r.cleanupOwnedDomainMappings(ctx, l, app); err != nil {
+		l.Error(err, "Failed to cleanup old DomainMappings")
+		app.Status.SetCondition(metav1.Condition{
+			Type:    workloadv1alpha1.DomainMappingReadyConditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  workloadv1alpha1.DomainMappingCleanupFailedReason,
+			Message: fmt.Sprintf("Failed to cleanup old DomainMappings: %v", err),
+		})
 	}
 
-	// Success - Update status (consider checking DM readiness if needed, but for now assume success)
-	app.Status.SetCondition(metav1.Condition{
-		Type:    workloadv1alpha1.DomainMappingReadyConditionType,
-		Status:  metav1.ConditionTrue,
-		Reason:  workloadv1alpha1.DomainMappingReadyReason,
-		Message: fmt.Sprintf("DomainMapping %s created/updated", dm.Name),
-	})
-	return dm, nil
+	return nil
 }
 
 // cleanupOwnedDomainMappings deletes any DomainMapping resources owned by the Application.
@@ -501,7 +506,7 @@ func (r *ApplicationReconciler) cleanupOwnedDomainMappings(
 	for i := range dmList.Items {
 		dm := dmList.Items[i] // Create a local copy for the closure/delete call
 		// Check if the DomainMapping is owned by the current Application instance.
-		if metav1.IsControlledBy(&dm, app) {
+		if metav1.IsControlledBy(&dm, app) && !slices.Contains(app.Spec.Domains, dm.Name) {
 			l.Info("Deleting orphaned DomainMapping", "domainMapping", dm.Name)
 			if err := r.Delete(ctx, &dm); err != nil && !apierrors.IsNotFound(err) {
 				l.Error(err, "Failed to delete orphaned DomainMapping", "domainMapping", dm.Name)
@@ -547,7 +552,7 @@ func (r *ApplicationReconciler) updateStatusURLs(
 	}
 
 	// Add the custom domain URL if configured and DomainMapping is ready
-	if app.Spec.Domain != "" {
+	if len(app.Spec.Domains) > 0 {
 		// Check the DomainMapping status condition we set earlier
 		// Use embedded Status struct's GetCondition method
 		dmCondition := app.Status.GetCondition(workloadv1alpha1.DomainMappingReadyConditionType)
@@ -561,9 +566,12 @@ func (r *ApplicationReconciler) updateStatusURLs(
 			if enableTLS {
 				scheme = "https"
 			}
-			urls = append(urls, fmt.Sprintf("%s://%s", scheme, app.Spec.Domain))
+			for _, domain := range app.Spec.Domains {
+				// Construct the custom domain URL
+				urls = append(urls, fmt.Sprintf("%s://%s", scheme, domain))
+			}
 		} else {
-			l.Info("DomainMapping not ready or not configured, skipping custom domain URL", "domain", app.Spec.Domain)
+			l.Info("DomainMapping not ready or not configured, skipping custom domains URLs", "domains", app.Spec.Domains)
 		}
 	}
 
