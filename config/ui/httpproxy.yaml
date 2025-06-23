@@ -1,0 +1,29 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ui-tls-domain
+  namespace: system
+spec:
+  secretName: ui-tls-domain
+  dnsNames:
+  - fcp.funccloud.dev
+  issuerRef:
+    name: le-prod-issuer
+    kind: ClusterIssuer
+---
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: ui
+  namespace: system
+spec:
+  ingressClassName: contour-external
+  virtualhost:
+    fqdn: fcp.funccloud.dev
+    tls:
+      secretName: ui-tls-domain
+  routes:
+    - services:
+        - name: ui-service
+          port: 4000
