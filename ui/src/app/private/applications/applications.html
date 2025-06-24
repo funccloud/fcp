@@ -1,0 +1,22 @@
+<form [formGroup]="formGroup" class="application-form">
+    <mat-form-field appearance="fill" class="full-width">
+        <mat-label>Enter your email</mat-label>
+        <input matInput placeholder="pat@example.com" [formControl]="email" (blur)="updateErrorMessage()" required />
+        @if (email.invalid) {
+        <mat-error>{{errorMessage()}}</mat-error>
+        }
+    </mat-form-field>
+
+    <mat-form-field appearance="fill" class="full-width">
+        <mat-label>Enter your email</mat-label>
+        <input matInput [formControl]="image" (blur)="updateErrorMessage()" required />
+        @if (image.invalid) {
+        <mat-error>{{errorMessage()}}</mat-error>
+        }
+    </mat-form-field>
+
+    <mat-slide-toggle formControlName="https">Usar Https ?</mat-slide-toggle>
+
+
+    
+</form>
