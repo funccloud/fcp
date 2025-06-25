@@ -8,7 +8,7 @@
   /* This works because this is a .css file, not .scss. */
   /* The Tailwind engine (PostCSS) will process it directly. */
   colors: {
-    background: "var(--mat-sys-background)",
+    background: "var(--mat-sys-background)";
     error: "var(--mat-sys-error)",
     "error-container": "var(--mat-sys-error-container)",
     "inverse-on-surface": "var(--mat-sys-inverse-on-surface)",
