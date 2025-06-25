@@ -4,6 +4,7 @@
   /* =================================
    * Primary Colors
    * ================================= */
+  --color-background: var(--mat-sys-background);
   --color-primary: var(--mat-sys-primary);
   --color-on-primary: var(--mat-sys-on-primary);
   --color-primary-container: var(--mat-sys-primary-container);
