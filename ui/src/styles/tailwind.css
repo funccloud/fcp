@@ -1,7 +1,3 @@
-/*
- * This file contains ONLY Tailwind CSS directives.
- * It will be a separate entry point in your angular.json.
- */
 @import "tailwindcss";
 
 @theme {
