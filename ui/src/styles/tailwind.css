@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  /* =================================
+   * Primary Colors
+   * ================================= */
+  --color-background: var(--mat-sys-background);
+  --color-primary: var(--mat-sys-primary);
+  --color-on-primary: var(--mat-sys-on-primary);
+  --color-primary-container: var(--mat-sys-primary-container);
+  --color-on-primary-container: var(--mat-sys-on-primary-container);
+
+  /* =================================
+   * Secondary Colors
+   * ================================= */
+  --color-secondary: var(--mat-sys-secondary);
+  --color-on-secondary: var(--mat-sys-on-secondary);
+  --color-secondary-container: var(--mat-sys-secondary-container);
+  --color-on-secondary-container: var(--mat-sys-on-secondary-container);
+
+  /* =================================
+   * Tertiary Colors
+   * ================================= */
+  --color-tertiary: var(--mat-sys-tertiary);
+  --color-on-tertiary: var(--mat-sys-on-tertiary);
+  --color-tertiary-container: var(--mat-sys-tertiary-container);
+  --color-on-tertiary-container: var(--mat-sys-on-tertiary-container);
+
+  /* =================================
+   * Error Colors
+   * ================================= */
+  --color-error: var(--mat-sys-error);
+  --color-on-error: var(--mat-sys-on-error);
+  --color-error-container: var(--mat-sys-error-container);
+  --color-on-error-container: var(--mat-sys-on-error-container);
+
+  /* =================================
+   * Surface & Background Colors
+   * ================================= */
+  --color-background: var(--mat-sys-background);
+  --color-on-background: var(--mat-sys-on-background);
+
+  /* Neutral Surfaces */
+  --color-surface: var(--mat-sys-surface);
+  --color-on-surface: var(--mat-sys-on-surface);
+  --color-surface-variant: var(--mat-sys-surface-variant);
+  --color-on-surface-variant: var(--mat-sys-on-surface-variant);
+
+  /* Surface Containers with increasing emphasis */
+  --color-surface-container-lowest: var(--mat-sys-surface-container-lowest);
+  --color-surface-container-low: var(--mat-sys-surface-container-low);
+  --color-surface-container: var(--mat-sys-surface-container);
+  --color-surface-container-high: var(--mat-sys-surface-container-high);
+  --color-container-highest: var(--mat-sys-surface-container-highest);
+
+  /* =================================
+   * Inverse Colors (for dark elements on light themes, etc.)
+   * ================================= */
+  --color-inverse-surface: var(--mat-sys-inverse-surface);
+  --color-inverse-on-surface: var(--mat-sys-inverse-on-surface);
+  --color-inverse-primary: var(--mat-sys-inverse-primary);
+
+  /* =================================
+   * Outlines & Borders
+   * ================================= */
+  --color-outline: var(--mat-sys-outline);
+  --color-outline-variant: var(--mat-sys-outline-variant);
+}
