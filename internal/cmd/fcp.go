@@ -19,7 +19,6 @@ import (
 	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
-	"k8s.io/kubectl/pkg/cmd/auth"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/cmd/version"
 	"k8s.io/kubectl/pkg/kuberc"
@@ -382,7 +381,6 @@ func NewFCPCommand(o FCPOptions) *cobra.Command {
 	cmds.AddCommand(plugin.NewCmdPlugin(o.IOStreams))
 	cmds.AddCommand(version.NewCmdVersion(f, o.IOStreams))
 	cmds.AddCommand(install.NewCmdInstall(f, o.IOStreams))
-	cmds.AddCommand(auth.NewCmdAuth(f, o.IOStreams))
 
 	// Stop warning about normalization of flags. That makes it possible to
 	// add the klog flags later.
