@@ -6,8 +6,18 @@ import {
 } from '@angular/ssr/node';
 import express from 'express';
 import { join } from 'node:path';
+import cookieParser from 'cookie-parser';
+import * as admin from 'firebase-admin';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
+
+try {
+  admin.initializeApp();
+  console.log('🚀 Firebase Admin SDK inicializado.');
+} catch (e) {
+  console.error('🔥 Falha ao inicializar o Firebase Admin SDK.', e);
+}
+const adminAuth = admin.auth();
 
 const app = express();
 const angularApp = new AngularNodeAppEngine();
@@ -40,11 +50,16 @@ app.use(
 );
 
 /**
+ * Parse cookies from incoming requests.
+ */
+app.use(cookieParser());
+
+/**
  * Handle all other requests by rendering the Angular application.
  */
 app.use((req, res, next) => {
   angularApp
-    .handle(req)
+    .handle(req, { authIdToken: req.cookies?.__session })
     .then((response) =>
       response ? writeResponseToNodeResponse(response, res) : next()
     )
